@@ -1,0 +1,13 @@
+# Node
+node_modules/
+
+# Environment variables
+.env
+
+# Uploaded user files
+public/uploads/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/

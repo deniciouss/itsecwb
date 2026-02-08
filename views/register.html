@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Register • SamgyupGrill</title>
+  <link rel="stylesheet" href="/public/css/theme.css">
+</head>
+
+<body class="grill-bg">
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/">
+        <div class="logo"></div>
+        <div>Samgyup<span style="color:var(--ember)">Grill</span></div>
+      </a>
+
+      <nav class="nav-links">
+        <a href="/branches">Branches</a>
+        <a href="/menu">Menu</a>
+        <a href="/reserve">Reserve</a>
+        <a href="/track">Track</a>
+        <a class="btn btn-ghost" href="/login">Login</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card card-pad" style="max-width:680px; margin: 0 auto;">
+      <div class="form-title">Create your account</div>
+      <div class="form-sub">Register to reserve a table, order, and track your requests.</div>
+
+      <!-- Optional: you can render errors here later when we use templates -->
+      <!-- <div class="alert">Sample error message</div> -->
+
+      <form class="form" action="/register" method="POST" enctype="multipart/form-data">
+        <div class="field">
+          <div class="label">Full Name</div>
+          <input class="input" type="text" name="full_name" placeholder="Juan Dela Cruz" required />
+        </div>
+
+        <div class="field">
+          <div class="label">Email</div>
+          <input class="input" type="email" name="email" placeholder="you@email.com" required />
+          <div class="help">Use a valid email format for future order updates.</div>
+        </div>
+
+        <div class="field">
+          <div class="label">Phone Number</div>
+          <input class="input" type="text" name="phone" placeholder="09XXXXXXXXX" required />
+          <div class="help">Example: 09171234567</div>
+        </div>
+
+        <div class="field">
+          <div class="label">Profile Photo</div>
+          <input class="input" type="file" name="photo" accept="image/*" required />
+          <div class="help">PNG/JPG recommended. (We’ll add file-type detection later.)</div>
+        </div>
+
+        <button class="btn btn-primary" type="submit" style="padding:12px 16px;">
+          Create account
+        </button>
+
+        <div class="help">
+          Already have an account? <a href="/login" style="color:var(--ember); font-weight:900; text-decoration:none;">Login</a>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="footer">ITSECWB</footer>
+</body>
+</html>
