@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Welcome • SamgyupGrill</title>
+  <link rel="stylesheet" href="/public/css/theme.css">
+</head>
+
+<body class="grill-bg">
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/">
+        <div class="logo"></div>
+        <div>Samgyup<span style="color:var(--ember)">Grill</span></div>
+      </a>
+
+      <nav class="nav-links">
+        <a href="/branches">Branches</a>
+        <a href="/menu">Menu</a>
+        <a href="/reserve">Reserve</a>
+        <a href="/track">Track</a>
+        <a class="btn btn-ghost" href="#" id="logoutBtn">Logout</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container" style="display:flex; align-items:center; justify-content:center; min-height:calc(100vh - 200px);">
+    <section class="hero-card" style="text-align:center; max-width:600px;">
+      <h1>Welcome to SamgyupGrill! 🎉</h1>
+      <p>You're now logged in and ready to explore.</p>
+    </section>
+  </main>
+
+  <footer class="footer">ITSECWB</footer>
+
+  <script>
+    // Logout functionality
+    document.getElementById('logoutBtn').addEventListener('click', function(e) {
+      e.preventDefault();
+      
+      if (confirm('Are you sure you want to logout?')) {
+        localStorage.removeItem('user');
+        localStorage.removeItem('user_id');
+        localStorage.removeItem('role_id');
+        window.location.href = '/';
+      }
+    });
+  </script>
+</body>
+</html>
