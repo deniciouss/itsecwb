@@ -3,6 +3,7 @@ const path = require("path");
 const multer = require("multer");
 const pool = require("./db");
 const fs = require("fs");
+const bcrypt = require("bcryptjs");
 
 const app = express();
 const PORT = 3000;
@@ -11,7 +12,7 @@ const PORT = 3000;
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-// serve uploaded images (so you can open them in browser)
+// serve static files (public/css, public/uploads, etc.)
 app.use("/public", express.static(path.join(__dirname, "public")));
 
 // CREATE UPLOADS DIRECTORY IF IT DOESN'T EXIST
@@ -23,82 +24,71 @@ if (!fs.existsSync(uploadsDir)) {
   console.log("✅ Uploads directory exists at:", uploadsDir);
 }
 
-// Multer upload setup (basic)
+// Multer upload setup
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
+  destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
-    // basic filename: timestamp + original name
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
     cb(null, Date.now() + "_" + safeName);
   },
 });
-
 const upload = multer({ storage });
 
-// Show login page
-app.get("/login", (req, res) => {
-  res.sendFile(path.join(__dirname, "views", "login.html"));
-});
+// Password policy: 8+ chars, upper, lower, number, special
+function isStrongPassword(pw) {
+  if (!pw || pw.length < 8) return false;
+  if (!/[A-Z]/.test(pw)) return false;
+  if (!/[a-z]/.test(pw)) return false;
+  if (!/[0-9]/.test(pw)) return false;
+  if (!/[^A-Za-z0-9]/.test(pw)) return false;
+  return true;
+}
 
-// Handle login API
-app.post("/api/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
+/* ------------------ PAGES ------------------ */
 
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
-    }
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "views", "home.html")));
 
-    // Query user by email
-    const [rows] = await pool.execute(
-      `SELECT user_id, full_name, email, phone, photo_path, role_id 
-       FROM users 
-       WHERE email = ?`,
-      [email.toLowerCase()]
-    );
-
-    if (rows.length === 0) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    const user = rows[0];
-
-    res.json({
-      message: "Login successful",
-      user: {
-        user_id: user.user_id,
-        full_name: user.full_name,
-        email: user.email,
-        phone: user.phone,
-        photo_path: user.photo_path,
-        role_id: user.role_id || 1
-      }
-    });
-
-  } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// Show welcome page
-app.get("/welcome", (req, res) => {
-  res.sendFile(path.join(__dirname, "views", "welcome.html"));
-});
-
-
-// Show register page
 app.get("/register", (req, res) => {
   res.sendFile(path.join(__dirname, "views", "register.html"));
 });
 
-// Handle registration
+app.get("/login", (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "login.html"));
+});
+
+app.get("/home", (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "home.html"));
+});
+
+app.get("/branches", (req, res) => res.send("Branches page UI next"));
+app.get("/menu", (req, res) => res.send("Menu/Order UI next"));
+app.get("/reserve", (req, res) => res.send("Reserve UI next"));
+app.get("/track", (req, res) => res.send("Track UI next"));
+
+/* ------------------ REGISTER ------------------ */
+
 app.post("/register", upload.single("photo"), async (req, res) => {
   try {
-    const { full_name, email, phone } = req.body;
+    const { full_name, email, phone, password, confirm_password } = req.body;
 
+    // required fields
+    if (!full_name || !email || !phone || !password || !confirm_password) {
+      return res.status(400).send("All fields are required.");
+    }
+
+    // confirm password
+    if (password !== confirm_password) {
+      return res.status(400).send("Passwords do not match.");
+    }
+
+    // strong password
+    if (!isStrongPassword(password)) {
+      return res.status(400).send(
+        "Password must be 8+ chars and include uppercase, lowercase, number, and special character."
+      );
+    }
+
+    // photo required
     if (!req.file) {
       return res.status(400).send("Profile photo is required.");
     }
@@ -106,17 +96,26 @@ app.post("/register", upload.single("photo"), async (req, res) => {
     // store a relative URL path
     const photo_path = "/public/uploads/" + req.file.filename;
 
+    // hash password
+    const password_hash = await bcrypt.hash(password, 12);
+
+    // IMPORTANT: matches your table columns exactly
     await pool.execute(
-      `INSERT INTO users (full_name, email, phone, photo_path)
-       VALUES (?, ?, ?, ?)`,
-      [full_name, email.toLowerCase(), phone, photo_path]
+      `INSERT INTO users (full_name, email, phone, password_hash, photo_path)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        full_name.trim(),
+        email.toLowerCase().trim(),
+        phone.trim(),
+        password_hash,
+        photo_path,
+      ]
     );
+
     return res.redirect("/login?registered=1");
-
   } catch (err) {
-    console.error(err);
+    console.error("Register error:", err);
 
-    // if duplicate email
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(400).send("Email already exists. Try another.");
     }
@@ -125,11 +124,59 @@ app.post("/register", upload.single("photo"), async (req, res) => {
   }
 });
 
-app.get("/", (req, res) => res.sendFile(path.join(__dirname, "views", "home.html")));
-app.get("/branches", (req, res) => res.send("Branches page UI next"));
-app.get("/menu", (req, res) => res.send("Menu/Order UI next"));
-app.get("/reserve", (req, res) => res.send("Reserve UI next"));
-app.get("/track", (req, res) => res.send("Track UI next"));
+/* ------------------ LOGIN API ------------------ */
+
+app.post("/api/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    // IMPORTANT: your PK is `id`, so alias to `user_id`
+    const [rows] = await pool.execute(
+      `SELECT
+         id AS user_id,
+         full_name,
+         email,
+         phone,
+         photo_path,
+         password_hash
+       FROM users
+       WHERE email = ?`,
+      [email.toLowerCase().trim()]
+    );
+
+    if (rows.length === 0) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const user = rows[0];
+
+    // verify password
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    return res.json({
+      message: "Login successful",
+      user: {
+        user_id: user.user_id,
+        full_name: user.full_name,
+        email: user.email,
+        phone: user.phone,
+        photo_path: user.photo_path
+      }
+    });
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+/* ------------------ START ------------------ */
 
 app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);

@@ -30,31 +30,49 @@
       <div class="form-title">Create your account</div>
       <div class="form-sub">Register to reserve a table, order, and track your requests.</div>
 
-      <!-- Optional: you can render errors here later when we use templates -->
-      <!-- <div class="alert">Sample error message</div> -->
-
-      <form class="form" action="/register" method="POST" enctype="multipart/form-data">
+      <form class="form" id="registerForm" action="/register" method="POST" enctype="multipart/form-data" novalidate>
         <div class="field">
           <div class="label">Full Name</div>
           <input class="input" type="text" name="full_name" placeholder="Juan Dela Cruz" required />
+          <div class="help error" id="nameError" style="display:none; color:var(--ember);">Full name is required.</div>
         </div>
 
         <div class="field">
           <div class="label">Email</div>
           <input class="input" type="email" name="email" placeholder="you@email.com" required />
           <div class="help">Use a valid email format for future order updates.</div>
+          <div class="help error" id="emailError" style="display:none; color:var(--ember);">Enter a valid email.</div>
         </div>
 
         <div class="field">
           <div class="label">Phone Number</div>
           <input class="input" type="text" name="phone" placeholder="09XXXXXXXXX" required />
           <div class="help">Example: 09171234567</div>
+          <div class="help error" id="phoneError" style="display:none; color:var(--ember);">Enter a valid PH mobile (11 digits, starts with 09).</div>
+        </div>
+
+        <div class="field">
+          <div class="label">Password</div>
+          <input class="input" id="password" type="password" name="password" placeholder="••••••••" required />
+          <div class="help">
+            Min 8 chars • Uppercase • Lowercase • Number • Special (!@#$...)
+          </div>
+          <div class="help error" id="passwordError" style="display:none; color:var(--ember);">
+            Password must be 8+ chars and include uppercase, lowercase, number, and special character.
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="label">Retype Password</div>
+          <input class="input" id="confirmPassword" type="password" name="confirm_password" placeholder="••••••••" required />
+          <div class="help error" id="confirmError" style="display:none; color:var(--ember);">Passwords do not match.</div>
         </div>
 
         <div class="field">
           <div class="label">Profile Photo</div>
           <input class="input" type="file" name="photo" accept="image/*" required />
           <div class="help">PNG/JPG recommended. (We’ll add file-type detection later.)</div>
+          <div class="help error" id="photoError" style="display:none; color:var(--ember);">Profile photo is required.</div>
         </div>
 
         <button class="btn btn-primary" type="submit" style="padding:12px 16px;">
@@ -62,12 +80,63 @@
         </button>
 
         <div class="help">
-          Already have an account? <a href="/login" style="color:var(--ember); font-weight:900; text-decoration:none;">Login</a>
+          Already have an account?
+          <a href="/login" style="color:var(--ember); font-weight:900; text-decoration:none;">Login</a>
         </div>
       </form>
     </section>
   </main>
 
   <footer class="footer">ITSECWB</footer>
+
+  <script>
+    const form = document.getElementById("registerForm");
+    const passwordEl = document.getElementById("password");
+    const confirmEl = document.getElementById("confirmPassword");
+
+    const show = (id, on) => (document.getElementById(id).style.display = on ? "block" : "none");
+
+    // Password policy: 8+ chars, upper, lower, number, special
+    const strongPassword = (pw) => {
+      if (!pw) return false;
+      if (pw.length < 8) return false;
+      if (!/[A-Z]/.test(pw)) return false;
+      if (!/[a-z]/.test(pw)) return false;
+      if (!/[0-9]/.test(pw)) return false;
+      if (!/[^A-Za-z0-9]/.test(pw)) return false; // special char
+      return true;
+    };
+
+    // Simple PH phone rule: 11 digits, starts with 09
+    const validPHPhone = (p) => /^09\d{9}$/.test((p || "").trim());
+
+    form.addEventListener("submit", (e) => {
+      // reset errors
+      ["nameError","emailError","phoneError","passwordError","confirmError","photoError"].forEach(id => show(id,false));
+
+      const fullName = (form.full_name.value || "").trim();
+      const email = (form.email.value || "").trim();
+      const phone = (form.phone.value || "").trim();
+      const pw = passwordEl.value;
+      const cpw = confirmEl.value;
+      const photo = form.photo.files && form.photo.files[0];
+
+      let ok = true;
+
+      if (!fullName) { show("nameError", true); ok = false; }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { show("emailError", true); ok = false; }
+      if (!validPHPhone(phone)) { show("phoneError", true); ok = false; }
+      if (!strongPassword(pw)) { show("passwordError", true); ok = false; }
+      if (pw !== cpw) { show("confirmError", true); ok = false; }
+      if (!photo) { show("photoError", true); ok = false; }
+
+      if (!ok) e.preventDefault();
+    });
+
+    // live match feedback
+    confirmEl.addEventListener("input", () => {
+      show("confirmError", confirmEl.value && (confirmEl.value !== passwordEl.value));
+    });
+  </script>
 </body>
 </html>
