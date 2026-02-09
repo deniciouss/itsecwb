@@ -26,6 +26,17 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+// Show login page
+app.get("/login", (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "login.html"));
+});
+
+// Show login page
+app.get("/welcome", (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "welcome.html"));
+});
+
+
 // Show register page
 app.get("/register", (req, res) => {
   res.sendFile(path.join(__dirname, "views", "register.html"));
