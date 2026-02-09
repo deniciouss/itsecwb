@@ -73,5 +73,58 @@
 
   <footer class="footer">ITSECWB</footer>
 
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      // Clear previous errors
+      document.getElementById('emailError').style.display = 'none';
+      document.getElementById('passwordError').style.display = 'none';
+      
+      const formData = new FormData(this);
+      const data = {
+        email: formData.get('email'),
+        password: formData.get('password')
+      };
+      
+      // Basic validation
+      if (!data.email) {
+        document.getElementById('emailError').style.display = 'block';
+        return;
+      }
+      if (!data.password || data.password.length < 6) {
+        document.getElementById('passwordError').style.display = 'block';
+        return;
+      }
+      
+      try {
+        const res = await fetch("http://localhost:3000/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        
+        const result = await res.json();
+        
+        if (!res.ok) {
+          alert(result.error || "Login failed");
+          return;
+        }
+        
+        // Save user info
+        const user = result.user;
+        localStorage.setItem("user", JSON.stringify(user));
+        localStorage.setItem("user_id", user.user_id);
+        localStorage.setItem("role_id", user.role_id);
+        
+        alert(`Welcome back, ${user.full_name}!`);
+        window.location.href = "/welcome";
+        
+      } catch (err) {
+        console.error("Login error:", err);
+        alert("Error connecting to the server.");
+      }
+    });
+  </script>
 </body>
 </html>
