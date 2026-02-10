@@ -30,6 +30,17 @@
       <div class="form-title">Create your account</div>
       <div class="form-sub">Register to reserve a table, order, and track your requests.</div>
 
+      <!-- ✅ Generic error message (anti-enumeration) -->
+      <div
+        id="genericError"
+        class="alert"
+        style="display:none; margin: 14px 0 16px; padding: 12px 14px; border-radius: 12px; background: rgba(255,74,74,0.10); border: 1px solid rgba(255,74,74,0.35); color: var(--ember); font-weight: 800;"
+        role="alert"
+        aria-live="polite"
+      >
+        Registration failed. Please try again.
+      </div>
+
       <form class="form" id="registerForm" action="/register" method="POST" enctype="multipart/form-data" novalidate>
         <div class="field">
           <div class="label">Full Name</div>
@@ -110,8 +121,16 @@
     // Simple PH phone rule: 11 digits, starts with 09
     const validPHPhone = (p) => /^09\d{9}$/.test((p || "").trim());
 
+    // ✅ show generic registration error (anti-enumeration)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") === "1") {
+      document.getElementById("genericError").style.display = "block";
+      // clean URL (remove ?error=1 so refresh won't repeat)
+      history.replaceState({}, "", "/register");
+    }
+
     form.addEventListener("submit", (e) => {
-      // reset errors
+      // reset field errors
       ["nameError","emailError","phoneError","passwordError","confirmError","photoError"].forEach(id => show(id,false));
 
       const fullName = (form.full_name.value || "").trim();

@@ -100,38 +100,27 @@ app.post("/register", upload.single("photo"), async (req, res) => {
 
     // required fields
     if (!full_name || !email || !phone || !password || !confirm_password) {
-      return res.status(400).send("All fields are required.");
-    }
-
-    // Email validation
-    if (!isValidEmail(email)) {
-      return res.status(400).send("Invalid email format.");
+      return res.redirect("/register?error=1");
     }
 
     // confirm password
     if (password !== confirm_password) {
-      return res.status(400).send("Passwords do not match.");
+      return res.redirect("/register?error=1");
     }
 
     // strong password
     if (!isStrongPassword(password)) {
-      return res.status(400).send(
-        "Password must be 8+ chars and include uppercase, lowercase, number, and special character."
-      );
+      return res.redirect("/register?error=1");
     }
 
     // photo required
     if (!req.file) {
-      return res.status(400).send("Profile photo is required.");
+      return res.redirect("/register?error=1");
     }
 
-    // store a relative URL path
     const photo_path = "/public/uploads/" + req.file.filename;
-
-    // hash password
     const password_hash = await bcrypt.hash(password, 12);
 
-    // IMPORTANT: matches your table columns exactly
     await pool.execute(
       `INSERT INTO users (full_name, email, phone, password_hash, photo_path)
        VALUES (?, ?, ?, ?, ?)`,
@@ -140,19 +129,22 @@ app.post("/register", upload.single("photo"), async (req, res) => {
         email.toLowerCase().trim(),
         phone.trim(),
         password_hash,
-        photo_path,
+        photo_path
       ]
     );
 
     return res.redirect("/login?registered=1");
-  } catch (err) {
-    console.error("Register error:", err.message);
 
+  } catch (err) {
+    // 🔐 SECURITY: log real error server-side only
     if (err.code === "ER_DUP_ENTRY") {
-      return res.status(400).send("Email already exists. Try another.");
+      console.warn(`[REGISTER] Duplicate email attempt: ${req.body.email}`);
+    } else {
+      console.error("[REGISTER] Unexpected error:", err);
     }
 
-    res.status(500).send("Server error");
+    // 🔐 USER SEES ONLY GENERIC ERROR
+    return res.redirect("/register?error=1");
   }
 });
 
