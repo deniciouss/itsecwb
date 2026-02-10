@@ -30,22 +30,42 @@
       <div class="form-title">Welcome back</div>
       <div class="form-sub">Sign in to SamgyupGrill</div>
 
-      <div id="toastWrap" class="toast-wrap"></div>
+      <!-- Error message for invalid login -->
+      <div id="loginError" class="help error" style="display:none; color:var(--ember); padding:12px; background:#fee2e2; border-radius:4px; margin-bottom:16px; margin-top:16px;">
+        Invalid email/password combination
+      </div>
 
       <form class="form" id="loginForm">
         <div class="field">
           <div class="label">Email</div>
-          <input class="input" type="email" name="email" placeholder="you@example.com" required />
+          <input 
+            class="input" 
+            type="email" 
+            name="email" 
+            placeholder="you@example.com" 
+            required 
+            autocomplete="email"
+            maxlength="254"
+          />
           <div class="help error" id="emailError" style="display:none; color:var(--ember);">
-            Email is required
+            Please enter a valid email address
           </div>
         </div>
 
         <div class="field">
           <div class="label">Password</div>
-          <input class="input" type="password" name="password" placeholder="••••••••" required minlength="8" />
+          <input 
+            class="input" 
+            type="password" 
+            name="password" 
+            placeholder="••••••••" 
+            required 
+            minlength="8"
+            maxlength="128"
+            autocomplete="current-password"
+          />
           <div class="help error" id="passwordError" style="display:none; color:var(--ember);">
-            Enter your password
+            Password must be at least 8 characters
           </div>
         </div>
 
@@ -64,76 +84,110 @@
   <footer class="footer">ITSECWB</footer>
 
   <script>
-    // successful registration toast
-    const params = new URLSearchParams(window.location.search);
-    const toastWrap = document.getElementById("toastWrap");
-
-    function showToast(title, msg){
-      const el = document.createElement("div");
-      el.className = "toast";
-      el.innerHTML = `
-        <div class="icon">✓</div>
-        <div>
-          <p class="title">${title}</p>
-          <p class="msg">${msg}</p>
-        </div>
-        <button class="close" aria-label="Close">✕</button>
-      `;
-      el.querySelector(".close").addEventListener("click", () => el.remove());
-      toastWrap.appendChild(el);
-
-      setTimeout(() => { if (el.isConnected) el.remove(); }, 4500);
+    // ========================================
+    // STRICT EMAIL VALIDATION (for UX)
+    // ========================================
+    function isValidEmail(email) {
+      const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+      return emailRegex.test(email) && email.length <= 254;
     }
 
-    if (params.get("registered") === "1") {
-      showToast("Registration successful!", "Your account is ready. Please log in to continue.");
-      history.replaceState({}, "", "/login");
-    }
-
-    // login
+    // ========================================
+    // LOGIN FORM HANDLER
+    // ========================================
     document.getElementById('loginForm').addEventListener('submit', async function(e) {
       e.preventDefault();
 
+      // Hide all error messages
       document.getElementById('emailError').style.display = 'none';
       document.getElementById('passwordError').style.display = 'none';
+      document.getElementById('loginError').style.display = 'none';
 
       const formData = new FormData(this);
-      const data = { email: formData.get('email'), password: formData.get('password') };
+      
+      // Get values and trim whitespace only (NO sanitization)
+      let email = formData.get('email');
+      let password = formData.get('password');
 
-      if (!data.email) {
+      email = email ? email.trim() : '';
+      password = password ? password.trim() : '';
+
+      // ========================================
+      // CLIENT-SIDE VALIDATION (UX ONLY)
+      // ========================================
+
+      // 1. Check if empty
+      if (!email) {
+        document.getElementById('emailError').textContent = 'Email is required';
         document.getElementById('emailError').style.display = 'block';
         return;
       }
-      if (!data.password) {
+
+      if (!password) {
+        document.getElementById('passwordError').textContent = 'Password is required';
         document.getElementById('passwordError').style.display = 'block';
         return;
       }
+
+      // 2. STRICT EMAIL VALIDATION (helps users catch typos)
+      if (!isValidEmail(email)) {
+        document.getElementById('emailError').textContent = 'Please enter a valid email address';
+        document.getElementById('emailError').style.display = 'block';
+        return;
+      }
+
+      // 3. Password length check (helps users)
+      if (password.length < 8) {
+        document.getElementById('passwordError').textContent = 'Password must be at least 8 characters';
+        document.getElementById('passwordError').style.display = 'block';
+        return;
+      }
+
+      // ========================================
+      // SEND DATA EXACTLY AS ENTERED
+      // Backend handles all security validation
+      // ========================================
 
       try {
         const res = await fetch("http://localhost:3000/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
+          body: JSON.stringify({ 
+            email: email,      // Trimmed only, not sanitized
+            password: password // NEVER sanitize passwords!
+          }),
         });
 
         const result = await res.json();
 
+        // Always show generic error message
         if (!res.ok) {
-          alert(result.error || "Login failed");
+          console.error("Login failed:", result);
+          document.getElementById('loginError').textContent = "Invalid email/password combination";
+          document.getElementById('loginError').style.display = 'block';
           return;
         }
 
+        // Validate response structure
+        if (!result.user || !result.user.user_id) {
+          console.error("Invalid response structure:", result);
+          document.getElementById('loginError').textContent = "Invalid email/password combination";
+          document.getElementById('loginError').style.display = 'block';
+          return;
+        }
+
+        // Store user data
         const user = result.user;
         localStorage.setItem("user", JSON.stringify(user));
         localStorage.setItem("user_id", user.user_id);
-        localStorage.setItem("role_id", user.role_id);
 
-        alert(`Welcome back, ${user.full_name}!`);
-        window.location.href = "/home";
+        // Redirect to welcome page
+        window.location.href = "/welcome";
 
       } catch (err) {
         console.error("Login error:", err);
-        alert("Error connecting to the server.");
+        document.getElementById('loginError').textContent = "Unable to connect. Please try again.";
+        document.getElementById('loginError').style.display = 'block';
       }
     });
   </script>

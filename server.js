@@ -34,6 +34,16 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// ========================================
+// VALIDATION FUNCTIONS
+// ========================================
+
+// Email validation
+function isValidEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email) && email.length <= 254;
+}
+
 // Password policy: 8+ chars, upper, lower, number, special
 function isStrongPassword(pw) {
   if (!pw || pw.length < 8) return false;
@@ -60,6 +70,10 @@ app.get("/home", (req, res) => {
   res.sendFile(path.join(__dirname, "views", "home.html"));
 });
 
+app.get("/welcome", (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "welcome.html"));
+});
+
 app.get("/branches", (req, res) => res.send("Branches page UI next"));
 app.get("/menu", (req, res) => res.send("Menu/Order UI next"));
 app.get("/reserve", (req, res) => res.send("Reserve UI next"));
@@ -74,6 +88,11 @@ app.post("/register", upload.single("photo"), async (req, res) => {
     // required fields
     if (!full_name || !email || !phone || !password || !confirm_password) {
       return res.status(400).send("All fields are required.");
+    }
+
+    // Email validation
+    if (!isValidEmail(email)) {
+      return res.status(400).send("Invalid email format.");
     }
 
     // confirm password
@@ -114,7 +133,7 @@ app.post("/register", upload.single("photo"), async (req, res) => {
 
     return res.redirect("/login?registered=1");
   } catch (err) {
-    console.error("Register error:", err);
+    console.error("Register error:", err.message);
 
     if (err.code === "ER_DUP_ENTRY") {
       return res.status(400).send("Email already exists. Try another.");
@@ -128,13 +147,36 @@ app.post("/register", upload.single("photo"), async (req, res) => {
 
 app.post("/api/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
 
+    // ========================================
+    // INPUT VALIDATION
+    // ========================================
+
+    // Check if fields exist
     if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+      return res.status(400).json({ error: "Invalid input" });
     }
 
-    // IMPORTANT: your PK is `id`, so alias to `user_id`
+    // Trim whitespace only (NO sanitization)
+    email = email.trim();
+    password = password.trim();
+
+    // STRICT EMAIL VALIDATION
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: "Invalid input" });
+    }
+
+    // Password length validation
+    if (password.length < 8 || password.length > 128) {
+      return res.status(400).json({ error: "Invalid input" });
+    }
+
+    // ========================================
+    // DATABASE QUERY
+    // Parameterized query prevents SQL injection
+    // ========================================
+
     const [rows] = await pool.execute(
       `SELECT
          id AS user_id,
@@ -145,20 +187,30 @@ app.post("/api/login", async (req, res) => {
          password_hash
        FROM users
        WHERE email = ?`,
-      [email.toLowerCase().trim()]
+      [email.toLowerCase()]
     );
 
+    // User not found - generic error
     if (rows.length === 0) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const user = rows[0];
 
-    // verify password
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) {
-      return res.status(401).json({ error: "Invalid email or password" });
+    // ========================================
+    // PASSWORD VERIFICATION
+    // Password sent exactly as typed, compared with hash
+    // ========================================
+
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    
+    if (!passwordMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
     }
+
+    // ========================================
+    // SUCCESS RESPONSE
+    // ========================================
 
     return res.json({
       message: "Login successful",
@@ -170,8 +222,9 @@ app.post("/api/login", async (req, res) => {
         photo_path: user.photo_path
       }
     });
+
   } catch (err) {
-    console.error("Login error:", err);
+    console.error("Login error:", err.message);
     res.status(500).json({ error: "Server error" });
   }
 });
