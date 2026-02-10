@@ -85,6 +85,71 @@
 
   <script>
     // ========================================
+    // TOAST (for verify / verified banners)
+    // ========================================
+    const params = new URLSearchParams(window.location.search);
+
+    function showToast(title, msg) {
+      // Simple modern toast without extra CSS files
+      const wrapId = "toastWrap";
+      let wrap = document.getElementById(wrapId);
+
+      if (!wrap) {
+        wrap = document.createElement("div");
+        wrap.id = wrapId;
+        wrap.style.position = "fixed";
+        wrap.style.top = "76px";
+        wrap.style.right = "18px";
+        wrap.style.zIndex = "9999";
+        wrap.style.display = "grid";
+        wrap.style.gap = "10px";
+        wrap.style.width = "min(420px, calc(100vw - 36px))";
+        document.body.appendChild(wrap);
+      }
+
+      const toast = document.createElement("div");
+      toast.style.display = "flex";
+      toast.style.gap = "12px";
+      toast.style.alignItems = "flex-start";
+      toast.style.padding = "14px 14px";
+      toast.style.borderRadius = "16px";
+      toast.style.border = "1px solid rgba(16,185,129,.22)";
+      toast.style.background = "rgba(16,185,129,.10)";
+      toast.style.boxShadow = "0 18px 45px rgba(2,6,23,.12)";
+
+      toast.innerHTML = `
+        <div style="
+          width:34px;height:34px;border-radius:12px;display:grid;place-items:center;
+          background:rgba(16,185,129,.16);border:1px solid rgba(16,185,129,.22);
+          font-weight:900;color:rgba(5,150,105,.95);flex:0 0 auto;
+        ">✓</div>
+        <div>
+          <div style="font-weight:900;margin:0;">${title}</div>
+          <div style="margin-top:2px;color:rgba(31,41,55,.78);font-weight:650;">${msg}</div>
+        </div>
+        <button aria-label="Close" style="
+          margin-left:auto;background:transparent;border:none;cursor:pointer;
+          color:rgba(31,41,55,.55);font-weight:900;padding:2px 6px;border-radius:10px;
+        ">✕</button>
+      `;
+
+      toast.querySelector("button").addEventListener("click", () => toast.remove());
+      wrap.appendChild(toast);
+
+      setTimeout(() => { if (toast.isConnected) toast.remove(); }, 4500);
+    }
+
+    // Show toast based on query params
+    if (params.get("verify") === "1") {
+      showToast("Check your email 📩", "We sent a verification link. Verify before logging in.");
+      history.replaceState({}, "", "/login");
+    }
+    if (params.get("verified") === "1") {
+      showToast("Email verified ✅", "Your account is activated. You can now log in.");
+      history.replaceState({}, "", "/login");
+    }
+
+    // ========================================
     // STRICT EMAIL VALIDATION (for UX)
     // ========================================
     function isValidEmail(email) {
@@ -104,19 +169,11 @@
       document.getElementById('loginError').style.display = 'none';
 
       const formData = new FormData(this);
-      
-      // Get values and trim whitespace only (NO sanitization)
-      let email = formData.get('email');
-      let password = formData.get('password');
 
-      email = email ? email.trim() : '';
-      password = password ? password.trim() : '';
+      let email = (formData.get('email') || '').trim();
+      let password = (formData.get('password') || '').trim();
 
-      // ========================================
-      // CLIENT-SIDE VALIDATION (UX ONLY)
-      // ========================================
-
-      // 1. Check if empty
+      // Client-side validation (UX only)
       if (!email) {
         document.getElementById('emailError').textContent = 'Email is required';
         document.getElementById('emailError').style.display = 'block';
@@ -129,56 +186,52 @@
         return;
       }
 
-      // 2. STRICT EMAIL VALIDATION (helps users catch typos)
       if (!isValidEmail(email)) {
         document.getElementById('emailError').textContent = 'Please enter a valid email address';
         document.getElementById('emailError').style.display = 'block';
         return;
       }
 
-      // 3. Password length check (helps users)
       if (password.length < 8) {
         document.getElementById('passwordError').textContent = 'Password must be at least 8 characters';
         document.getElementById('passwordError').style.display = 'block';
         return;
       }
 
-      // ========================================
-      // SEND DATA EXACTLY AS ENTERED
-      // Backend handles all security validation
-      // ========================================
-
       try {
-        const res = await fetch("http://localhost:3000/api/login", {
+        // Use relative URL so it works on any host/port
+        const res = await fetch("/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            email: email,
-            password: password
-          }),
+          body: JSON.stringify({ email, password }),
         });
 
-        const result = await res.json();
+        const result = await res.json().catch(() => ({}));
 
-        // Handle errors including rate limiting
         if (!res.ok) {
-          console.error("Login failed:", result);
-          
-          // Check if rate limited (status 429)
+          // Rate limited
           if (res.status === 429) {
-            document.getElementById('loginError').textContent = "Too many login attempts. Please try again in 15 minutes.";
-          } else {
-            document.getElementById('loginError').textContent = "Invalid email/password combination";
+            document.getElementById('loginError').textContent =
+              "Too many login attempts. Please try again in 15 minutes.";
           }
-          
+          // Not verified (from your updated server.js)
+          else if (res.status === 403 && result.error) {
+            document.getElementById('loginError').textContent = result.error;
+          }
+          // Generic invalid creds
+          else {
+            document.getElementById('loginError').textContent =
+              "Invalid email/password combination";
+          }
+
           document.getElementById('loginError').style.display = 'block';
           return;
         }
 
-        // Validate response structure
+        // Validate response
         if (!result.user || !result.user.user_id) {
-          console.error("Invalid response structure:", result);
-          document.getElementById('loginError').textContent = "Invalid email/password combination";
+          document.getElementById('loginError').textContent =
+            "Invalid email/password combination";
           document.getElementById('loginError').style.display = 'block';
           return;
         }
@@ -188,15 +241,16 @@
         localStorage.setItem("user", JSON.stringify(user));
         localStorage.setItem("user_id", user.user_id);
 
-        // Redirect to welcome page
         window.location.href = "/welcome";
 
       } catch (err) {
         console.error("Login error:", err);
-        document.getElementById('loginError').textContent = "Unable to connect. Please try again.";
+        document.getElementById('loginError').textContent =
+          "Unable to connect. Please try again.";
         document.getElementById('loginError').style.display = 'block';
       }
     });
   </script>
+
 </body>
 </html>
