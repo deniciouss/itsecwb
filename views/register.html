@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Register • SamgyupGrill</title>
   <link rel="stylesheet" href="/public/css/theme.css">
+
+  <!-- ✅ Google reCAPTCHA v2 script -->
+  <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 
 <body class="grill-bg">
@@ -86,6 +89,19 @@
           <div class="help error" id="photoError" style="display:none; color:var(--ember);">Profile photo is required.</div>
         </div>
 
+        <!-- ✅ CAPTCHA -->
+        <div class="field">
+          <div class="label">Human Check</div>
+          <div class="help">Please complete the verification.</div>
+
+          <!-- TEST SITE KEY (works on localhost). Replace with your own site key when ready -->
+          <div class="g-recaptcha" data-sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"></div>
+
+          <div class="help error" id="captchaError" style="display:none; color:var(--ember);">
+            Please complete the CAPTCHA.
+          </div>
+        </div>
+
         <button class="btn btn-primary" type="submit" style="padding:12px 16px;">
           Create account
         </button>
@@ -107,31 +123,28 @@
 
     const show = (id, on) => (document.getElementById(id).style.display = on ? "block" : "none");
 
-    // Password policy: 8+ chars, upper, lower, number, special
     const strongPassword = (pw) => {
       if (!pw) return false;
       if (pw.length < 8) return false;
       if (!/[A-Z]/.test(pw)) return false;
       if (!/[a-z]/.test(pw)) return false;
       if (!/[0-9]/.test(pw)) return false;
-      if (!/[^A-Za-z0-9]/.test(pw)) return false; // special char
+      if (!/[^A-Za-z0-9]/.test(pw)) return false;
       return true;
     };
 
-    // Simple PH phone rule: 11 digits, starts with 09
     const validPHPhone = (p) => /^09\d{9}$/.test((p || "").trim());
 
-    // ✅ show generic registration error (anti-enumeration)
+    // ✅ generic error banner
     const params = new URLSearchParams(window.location.search);
     if (params.get("error") === "1") {
       document.getElementById("genericError").style.display = "block";
-      // clean URL (remove ?error=1 so refresh won't repeat)
       history.replaceState({}, "", "/register");
     }
 
     form.addEventListener("submit", (e) => {
-      // reset field errors
-      ["nameError","emailError","phoneError","passwordError","confirmError","photoError"].forEach(id => show(id,false));
+      ["nameError","emailError","phoneError","passwordError","confirmError","photoError","captchaError"]
+        .forEach(id => show(id,false));
 
       const fullName = (form.full_name.value || "").trim();
       const email = (form.email.value || "").trim();
@@ -139,6 +152,10 @@
       const pw = passwordEl.value;
       const cpw = confirmEl.value;
       const photo = form.photo.files && form.photo.files[0];
+
+      // ✅ reCAPTCHA response value injected by Google
+      const captchaResponse =
+        (document.querySelector('[name="g-recaptcha-response"]') || {}).value || "";
 
       let ok = true;
 
@@ -148,11 +165,11 @@
       if (!strongPassword(pw)) { show("passwordError", true); ok = false; }
       if (pw !== cpw) { show("confirmError", true); ok = false; }
       if (!photo) { show("photoError", true); ok = false; }
+      if (!captchaResponse) { show("captchaError", true); ok = false; }
 
       if (!ok) e.preventDefault();
     });
 
-    // live match feedback
     confirmEl.addEventListener("input", () => {
       show("confirmError", confirmEl.value && (confirmEl.value !== passwordEl.value));
     });

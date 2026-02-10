@@ -1,8 +1,6 @@
-
 const express = require("express");
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env.local") });
-
 
 const multer = require("multer");
 const pool = require("./db");
@@ -15,6 +13,11 @@ const { verifyTransporter } = require("./mailer");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ✅ fetch support (Node 18+ has global fetch; otherwise install node-fetch)
+const fetchFn = global.fetch
+  ? global.fetch
+  : (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 // parse form fields
 app.use(express.urlencoded({ extended: false }));
@@ -79,6 +82,31 @@ function makeVerificationToken() {
   const rawToken = crypto.randomBytes(32).toString("hex"); // send to user
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex"); // store in DB
   return { rawToken, tokenHash };
+}
+
+// ✅ Google reCAPTCHA v2 verification (server-side)
+async function verifyRecaptchaV2(token, ip) {
+  const secret = process.env.RECAPTCHA_SECRET_KEY;
+
+  if (!secret) {
+    console.warn("[reCAPTCHA] Missing RECAPTCHA_SECRET_KEY in env");
+    return false;
+  }
+  if (!token) return false;
+
+  const params = new URLSearchParams();
+  params.append("secret", secret);
+  params.append("response", token);
+  if (ip) params.append("remoteip", ip);
+
+  const resp = await fetchFn("https://www.google.com/recaptcha/api/siteverify", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+
+  const data = await resp.json();
+  return data && data.success === true;
 }
 
 /* ------------------ PAGES ------------------ */
@@ -178,12 +206,22 @@ app.post("/register", upload.single("photo"), async (req, res) => {
   try {
     const { full_name, email, phone, password, confirm_password } = req.body;
 
+    // ✅ CAPTCHA token submitted by Google reCAPTCHA
+    const captchaToken = req.body["g-recaptcha-response"];
+
+    // ✅ Verify CAPTCHA server-side (IMPORTANT)
+    const captchaOk = await verifyRecaptchaV2(captchaToken, req.ip);
+    if (!captchaOk) {
+      console.warn("[REGISTER] CAPTCHA failed for IP:", req.ip);
+      return res.redirect("/register?error=1");
+    }
+
     // required fields
     if (!full_name || !email || !phone || !password || !confirm_password) {
       return res.redirect("/register?error=1");
     }
 
-    // Email validation (you have isValidEmail earlier)
+    // Email validation
     if (!isValidEmail(email)) {
       return res.redirect("/register?error=1");
     }
