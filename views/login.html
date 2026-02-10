@@ -153,17 +153,24 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
-            email: email,      // Trimmed only, not sanitized
-            password: password // NEVER sanitize passwords!
+            email: email,
+            password: password
           }),
         });
 
         const result = await res.json();
 
-        // Always show generic error message
+        // Handle errors including rate limiting
         if (!res.ok) {
           console.error("Login failed:", result);
-          document.getElementById('loginError').textContent = "Invalid email/password combination";
+          
+          // Check if rate limited (status 429)
+          if (res.status === 429) {
+            document.getElementById('loginError').textContent = "Too many login attempts. Please try again in 15 minutes.";
+          } else {
+            document.getElementById('loginError').textContent = "Invalid email/password combination";
+          }
+          
           document.getElementById('loginError').style.display = 'block';
           return;
         }

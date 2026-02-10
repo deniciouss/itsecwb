@@ -4,6 +4,7 @@ const multer = require("multer");
 const pool = require("./db");
 const fs = require("fs");
 const bcrypt = require("bcryptjs");
+const rateLimit = require("express-rate-limit");
 
 const app = express();
 const PORT = 3000;
@@ -33,6 +34,18 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
+
+// ========================================
+// RATE LIMITING (LOGIN ONLY)
+// ========================================
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Max 5 login attempts per 15 minutes
+  message: { error: "Too many login attempts. Please try again in 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ========================================
 // VALIDATION FUNCTIONS
@@ -145,7 +158,7 @@ app.post("/register", upload.single("photo"), async (req, res) => {
 
 /* ------------------ LOGIN API ------------------ */
 
-app.post("/api/login", async (req, res) => {
+app.post("/api/login", loginLimiter, async (req, res) => {
   try {
     let { email, password } = req.body;
 
