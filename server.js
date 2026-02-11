@@ -178,7 +178,6 @@ async function clearLoginAttempts(email) {
   await pool.execute(`DELETE FROM login_attempts WHERE email = ?`, [email]);
 }
 
-
 // ========================================
 // CLEANUP JOB: delete old login_attempts rows
 // ========================================
@@ -193,16 +192,11 @@ async function cleanupLoginAttempts() {
       [RETENTION_DAYS]
     );
 
-    if (result && typeof result.affectedRows === "number") {
-      console.log(`[CLEANUP] login_attempts: removed ${result.affectedRows} old rows`);
-    } else {
-      console.log("[CLEANUP] login_attempts cleanup executed");
-    }
+    console.log(`[CLEANUP] login_attempts: removed ${result.affectedRows || 0} old rows`);
   } catch (err) {
     console.error("[CLEANUP] login_attempts cleanup error:", err.message);
   }
 }
-
 
 /* ------------------ PAGES ------------------ */
 
@@ -391,12 +385,11 @@ app.post("/register", upload.single("photo"), async (req, res) => {
   }
 });
 
-
 /* ------------------ LOGIN API ------------------ */
 
 app.post("/api/login", loginLimiter, async (req, res) => {
   try {
-    let { email, password } = req.body;
+    let { email, password, captchaToken } = req.body;
 
     // INPUT VALIDATION
     if (!email || !password) {
@@ -414,6 +407,12 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       return res.status(400).json({ error: "Invalid input" });
     }
 
+    // ✅ CAPTCHA REQUIRED EVERY LOGIN
+    const captchaOk = await verifyRecaptchaV2(captchaToken, req.ip);
+    if (!captchaOk) {
+      return res.status(400).json({ error: "CAPTCHA verification failed" });
+    }
+
     // ✅ EMAIL LOCK CHECK
     if (await isEmailLocked(email)) {
       return res.status(423).json({
@@ -421,6 +420,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       });
     }
 
+    // Query user including verification status
     const [rows] = await pool.execute(
       `SELECT
          id AS user_id,
@@ -485,8 +485,7 @@ app.listen(PORT, () => {
   console.log(`📝 Register: http://localhost:${PORT}/register`);
   console.log(`🔐 Login: http://localhost:${PORT}/login`);
 
-  // Run cleanup at startup, then every X hours
+  // cleanup at startup + every few hours
   cleanupLoginAttempts();
   setInterval(cleanupLoginAttempts, CLEANUP_EVERY_HOURS * 60 * 60 * 1000);
 });
-
