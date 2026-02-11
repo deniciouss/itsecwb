@@ -46,12 +46,12 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // ========================================
-// RATE LIMITING (LOGIN ONLY)
+// RATE LIMITING (LOGIN ONLY) - BY IP
 // ========================================
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Max 5 login attempts per 15 minutes
+  max: 5, // Max 5 login attempts per 15 minutes per IP
   message: { error: "Too many login attempts. Please try again in 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -107,6 +107,75 @@ async function verifyRecaptchaV2(token, ip) {
 
   const data = await resp.json();
   return data && data.success === true;
+}
+
+// ========================================
+// ACCOUNT LOCKING (BY EMAIL)
+// Requires table: login_attempts
+// ========================================
+const LOCK_WINDOW_MIN = 15;      // count failures within this window
+const LOCK_THRESHOLD = 10;       // 10 failed attempts
+const LOCK_DURATION_MIN = 30;    // lock for 30 minutes
+
+async function getAttemptRow(email) {
+  const [rows] = await pool.execute(
+    `SELECT email, failed_count, first_failed_at, last_failed_at, lock_until
+     FROM login_attempts
+     WHERE email = ?
+     LIMIT 1`,
+    [email]
+  );
+  return rows[0] || null;
+}
+
+async function isEmailLocked(email) {
+  const row = await getAttemptRow(email);
+  if (!row || !row.lock_until) return false;
+  return new Date(row.lock_until) > new Date();
+}
+
+async function recordFailedAttempt(email) {
+  const now = new Date();
+  const row = await getAttemptRow(email);
+
+  // Create row if missing
+  if (!row) {
+    await pool.execute(
+      `INSERT INTO login_attempts (email, failed_count, first_failed_at, last_failed_at, lock_until)
+       VALUES (?, 1, ?, ?, NULL)`,
+      [email, now, now]
+    );
+    return;
+  }
+
+  // If already locked, keep it locked (do not extend here)
+  if (row.lock_until && new Date(row.lock_until) > now) return;
+
+  const firstFailedAt = row.first_failed_at ? new Date(row.first_failed_at) : null;
+  const withinWindow =
+    firstFailedAt && (now - firstFailedAt) <= (LOCK_WINDOW_MIN * 60 * 1000);
+
+  const nextCount = withinWindow ? (row.failed_count + 1) : 1;
+  const nextFirstFailedAt = withinWindow ? firstFailedAt : now;
+
+  let lockUntil = null;
+  if (nextCount >= LOCK_THRESHOLD) {
+    lockUntil = new Date(now.getTime() + LOCK_DURATION_MIN * 60 * 1000);
+  }
+
+  await pool.execute(
+    `UPDATE login_attempts
+     SET failed_count = ?,
+         first_failed_at = ?,
+         last_failed_at = ?,
+         lock_until = ?
+     WHERE email = ?`,
+    [nextCount, nextFirstFailedAt, now, lockUntil, email]
+  );
+}
+
+async function clearLoginAttempts(email) {
+  await pool.execute(`DELETE FROM login_attempts WHERE email = ?`, [email]);
 }
 
 /* ------------------ PAGES ------------------ */
@@ -308,7 +377,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       return res.status(400).json({ error: "Invalid input" });
     }
 
-    email = email.trim();
+    email = email.trim().toLowerCase();
     password = password.trim();
 
     if (!isValidEmail(email)) {
@@ -319,7 +388,13 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       return res.status(400).json({ error: "Invalid input" });
     }
 
-    // Query user including verification status
+    // ✅ EMAIL LOCK CHECK
+    if (await isEmailLocked(email)) {
+      return res.status(423).json({
+        error: "Account temporarily locked due to too many failed attempts. Please try again later."
+      });
+    }
+
     const [rows] = await pool.execute(
       `SELECT
          id AS user_id,
@@ -330,11 +405,14 @@ app.post("/api/login", loginLimiter, async (req, res) => {
          password_hash,
          is_verified
        FROM users
-       WHERE email = ?`,
-      [email.toLowerCase()]
+       WHERE email = ?
+       LIMIT 1`,
+      [email]
     );
 
+    // Generic response (but still record failure)
     if (rows.length === 0) {
+      await recordFailedAttempt(email);
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -342,14 +420,20 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 
     // Block login if not verified
     if (user.is_verified !== 1) {
+      // counts as a failure too
+      await recordFailedAttempt(email);
       return res.status(403).json({ error: "Please verify your email before logging in." });
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordMatch) {
+      await recordFailedAttempt(email);
       return res.status(401).json({ error: "Invalid credentials" });
     }
+
+    // ✅ SUCCESS: clear attempts
+    await clearLoginAttempts(email);
 
     return res.json({
       message: "Login successful",
@@ -364,7 +448,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 
   } catch (err) {
     console.error("Login error:", err.message);
-    res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Server error" });
   }
 });
 

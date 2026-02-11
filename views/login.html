@@ -38,12 +38,12 @@
       <form class="form" id="loginForm">
         <div class="field">
           <div class="label">Email</div>
-          <input 
-            class="input" 
-            type="email" 
-            name="email" 
-            placeholder="you@example.com" 
-            required 
+          <input
+            class="input"
+            type="email"
+            name="email"
+            placeholder="you@example.com"
+            required
             autocomplete="email"
             maxlength="254"
           />
@@ -54,12 +54,12 @@
 
         <div class="field">
           <div class="label">Password</div>
-          <input 
-            class="input" 
-            type="password" 
-            name="password" 
-            placeholder="••••••••" 
-            required 
+          <input
+            class="input"
+            type="password"
+            name="password"
+            placeholder="••••••••"
+            required
             minlength="8"
             maxlength="128"
             autocomplete="current-password"
@@ -90,7 +90,6 @@
     const params = new URLSearchParams(window.location.search);
 
     function showToast(title, msg) {
-      // Simple modern toast without extra CSS files
       const wrapId = "toastWrap";
       let wrap = document.getElementById(wrapId);
 
@@ -199,7 +198,6 @@
       }
 
       try {
-        // Use relative URL so it works on any host/port
         const res = await fetch("/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -209,12 +207,17 @@
         const result = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          // Rate limited
+          // IP rate-limited
           if (res.status === 429) {
             document.getElementById('loginError').textContent =
               "Too many login attempts. Please try again in 15 minutes.";
           }
-          // Not verified (from your updated server.js)
+          // EMAIL account locked
+          else if (res.status === 423) {
+            document.getElementById('loginError').textContent =
+              "This account is temporarily locked due to too many failed attempts. Please try again later.";
+          }
+          // Not verified
           else if (res.status === 403 && result.error) {
             document.getElementById('loginError').textContent = result.error;
           }
@@ -236,7 +239,6 @@
           return;
         }
 
-        // Store user data
         const user = result.user;
         localStorage.setItem("user", JSON.stringify(user));
         localStorage.setItem("user_id", user.user_id);
