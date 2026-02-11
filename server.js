@@ -10,6 +10,11 @@ const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const { sendVerificationEmail } = require("./mailer");
 const { verifyTransporter } = require("./mailer");
+const mysql2 = require("mysql2"); // NOT /promise
+const session = require("express-session");
+const MySQLStore = require("express-mysql-session")(session);
+
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,6 +27,44 @@ const fetchFn = global.fetch
 // parse form fields
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+
+// ========================================
+// SESSION STORE (MySQL) for ADMIN
+// IMPORTANT: express-mysql-session needs a callback-based connection
+// ========================================
+const sessionDbPool = mysql2.createPool({
+  host: process.env.DB_HOST || "localhost",
+  user: process.env.DB_USER || "samgyup_user",
+  password: process.env.DB_PASSWORD || "",
+  database: process.env.DB_NAME || "samgyup_db",
+  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
+});
+
+const sessionStore = new MySQLStore(
+  {
+    clearExpired: true,
+    checkExpirationInterval: 15 * 60 * 1000,
+    expiration: 2 * 60 * 60 * 1000,
+  },
+  sessionDbPool
+);
+
+app.use(
+  session({
+    name: "sg_admin_sid",
+    secret: process.env.SESSION_SECRET,
+    store: sessionStore,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: false,
+      maxAge: 2 * 60 * 60 * 1000,
+    },
+  })
+);
+
 
 // serve static files (public/css, public/uploads, etc.)
 app.use("/public", express.static(path.join(__dirname, "public")));
@@ -60,6 +103,14 @@ const loginLimiter = rateLimit({
 // ========================================
 // VALIDATION FUNCTIONS
 // ========================================
+
+//admin middleware
+function requireAdmin(req, res, next) {
+  if (!req.session || !req.session.admin) {
+    return res.redirect("/admin/login");
+  }
+  next();
+}
 
 // Email validation
 function isValidEmail(email) {
@@ -289,6 +340,15 @@ app.get("/verify-email", async (req, res) => {
   }
 });
 
+app.get("/admin/login", (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "admin-login.html"));
+});
+
+app.get("/admin/dashboard", requireAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "admin-dashboard.html"));
+});
+
+
 /* ------------------ REGISTER ------------------ */
 
 app.post("/register", upload.single("photo"), async (req, res) => {
@@ -476,6 +536,100 @@ app.post("/api/login", loginLimiter, async (req, res) => {
     console.error("Login error:", err.message);
     return res.status(500).json({ error: "Server error" });
   }
+});
+
+// Optional: stricter rate limit just for admin login
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: "Too many admin login attempts. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
+  try {
+    let { email, password, captchaToken } = req.body;
+
+    if (!email || !password) return res.status(400).json({ error: "Invalid input" });
+
+    email = email.trim().toLowerCase();
+    password = password.trim();
+
+    if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid input" });
+    if (password.length < 8 || password.length > 128) return res.status(400).json({ error: "Invalid input" });
+
+    // ✅ CAPTCHA REQUIRED (since you chose every login)
+    const captchaOk = await verifyRecaptchaV2(captchaToken, req.ip);
+    if (!captchaOk) {
+      return res.status(400).json({ error: "CAPTCHA verification failed" });
+    }
+
+    // ✅ Email lock still applies
+    if (await isEmailLocked(email)) {
+      return res.status(423).json({ error: "Account temporarily locked. Please try again later." });
+    }
+
+    const [rows] = await pool.execute(
+      `SELECT id, full_name, email, password_hash, is_verified, role
+       FROM users
+       WHERE email = ?
+       LIMIT 1`,
+      [email]
+    );
+
+    // Generic failure
+    if (rows.length === 0) {
+      await recordFailedAttempt(email);
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const user = rows[0];
+
+    // Must be admin
+    if (user.role !== "admin") {
+      await recordFailedAttempt(email);
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    if (user.is_verified !== 1) {
+      await recordFailedAttempt(email);
+      return res.status(403).json({ error: "Please verify your email before logging in." });
+    }
+
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) {
+      await recordFailedAttempt(email);
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    await clearLoginAttempts(email);
+
+    // ✅ Create admin session
+    req.session.admin = {
+      user_id: user.id,
+      full_name: user.full_name,
+      email: user.email,
+      role: user.role,
+    };
+
+    return res.json({ message: "Admin login successful" });
+  } catch (err) {
+    console.error("Admin login error:", err.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/admin/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("sg_admin_sid");
+    return res.json({ message: "Logged out" });
+  });
+});
+
+app.get("/api/admin/me", (req, res) => {
+  if (!req.session || !req.session.admin) return res.status(401).json({ error: "Not logged in" });
+  return res.json({ admin: req.session.admin });
 });
 
 /* ------------------ START ------------------ */

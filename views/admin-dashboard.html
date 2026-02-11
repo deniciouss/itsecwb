@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Admin Dashboard • SamgyupGrill</title>
+  <link rel="stylesheet" href="/public/css/theme.css">
+</head>
+<body class="grill-bg">
+  <main class="container">
+    <section class="card card-pad" style="max-width:900px; margin: 40px auto;">
+      <div class="form-title">Admin Dashboard</div>
+      <div class="form-sub" id="who">Loading...</div>
+
+      <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="logoutBtn">Logout</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    async function loadMe() {
+      const res = await fetch("/api/admin/me");
+      const data = await res.json().catch(() => ({}));
+      document.getElementById("who").textContent =
+        data.admin ? `Logged in as: ${data.admin.full_name} (${data.admin.email})` : "Not logged in";
+    }
+
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      await fetch("/api/admin/logout", { method: "POST" });
+      window.location.href = "/admin/login";
+    });
+
+    loadMe();
+  </script>
+</body>
+</html>

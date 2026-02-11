@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Login • SamgyupGrill</title>
+  <title>Admin Login • SamgyupGrill</title>
   <link rel="stylesheet" href="/public/css/theme.css">
 
-  <!-- ✅ Google reCAPTCHA v2 -->
+  <!-- Google reCAPTCHA -->
   <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 
@@ -18,31 +18,23 @@
         <div class="logo"></div>
         <div>Samgyup<span style="color:var(--ember)">Grill</span></div>
       </a>
-
-      <nav class="nav-links">
-        <a href="/branches">Branches</a>
-        <a href="/menu">Menu</a>
-        <a href="/reserve">Reserve</a>
-        <a href="/track">Track</a>
-        <a class="btn btn-ghost" href="/login">Login</a>
-      </nav>
     </div>
   </header>
 
   <main class="container">
-    <section class="card card-pad" style="max-width:680px; margin: 0 auto;">
+    <section class="card card-pad" style="max-width:520px; margin: 80px auto;">
       
-      <div class="form-title">Welcome back</div>
-      <div class="form-sub">Sign in to SamgyupGrill</div>
+      <div class="form-title">Administrator Login</div>
+      <div class="form-sub">Restricted access — authorized personnel only</div>
 
-      <!-- Error Message -->
-      <div id="loginError"
+      <!-- Error Box -->
+      <div id="errorBox"
            style="display:none; color:var(--ember); padding:12px;
                   background:#fee2e2; border-radius:10px; margin:16px 0;">
         Login failed
       </div>
 
-      <form id="loginForm" class="form">
+      <form id="adminLoginForm" class="form">
 
         <!-- Email -->
         <div class="field">
@@ -51,15 +43,11 @@
             class="input"
             type="email"
             name="email"
-            placeholder="you@example.com"
+            placeholder="admin@example.com"
             required
             autocomplete="email"
             maxlength="254"
           />
-          <div id="emailError"
-               style="display:none; color:var(--ember); margin-top:6px;">
-            Please enter a valid email address.
-          </div>
         </div>
 
         <!-- Password -->
@@ -79,7 +67,7 @@
 
         <!-- CAPTCHA -->
         <div class="field">
-          <div class="label">Human Check</div>
+          <div class="label">Human Verification</div>
           <div class="g-recaptcha"
                data-sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI">
           </div>
@@ -90,33 +78,17 @@
         </div>
 
         <button class="btn btn-primary" type="submit">
-          Sign in
+          Sign in as Administrator
         </button>
-
-        <div class="help" style="margin-top:14px;">
-          New here?
-          <a href="/register"
-             style="color:var(--ember); font-weight:900; text-decoration:none;">
-            Create an account
-          </a>
-        </div>
 
       </form>
 
-      <!-- Admin Section -->
-      <div style="
-        margin-top:28px;
-        padding:16px;
-        border-radius:14px;
-        background:rgba(0,0,0,0.04);
-        text-align:center;
-      ">
-        🔒 <strong>Administrator Access</strong><br>
-        <a href="/admin/login"
-           style="color:var(--ember); font-weight:900; text-decoration:none;">
-          Login as Administrator
+      <!-- Go Back Button -->
+      <div style="margin-top:22px; text-align:center;">
+        <a href="/login" class="btn btn-ghost" style="display:inline-block;">
+          ← Go back to User Login
         </a>
-        <div style="font-size:12px; opacity:.7; margin-top:6px;">
+        <div style="font-size:12px; opacity:.7; margin-top:8px;">
           Only authorized admin accounts can access the admin panel.
         </div>
       </div>
@@ -127,18 +99,9 @@
   <footer class="footer">ITSECWB</footer>
 
   <script>
-    const form = document.getElementById("loginForm");
-    const errorBox = document.getElementById("loginError");
+    const form = document.getElementById("adminLoginForm");
+    const errorBox = document.getElementById("errorBox");
     const captchaError = document.getElementById("captchaError");
-    const emailError = document.getElementById("emailError");
-
-    // ========================================
-    // STRICT EMAIL VALIDATION (for UX)
-    // ========================================
-    function isValidEmail(email) {
-      const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-      return emailRegex.test(email) && email.length <= 254;
-    }
 
     function getCaptchaToken() {
       const el = document.querySelector('[name="g-recaptcha-response"]');
@@ -150,17 +113,10 @@
 
       errorBox.style.display = "none";
       captchaError.style.display = "none";
-      emailError.style.display = "none";
 
       const email = form.email.value.trim();
       const password = form.password.value.trim();
       const captchaToken = getCaptchaToken();
-
-      // Strict email validation (UX)
-      if (!isValidEmail(email)) {
-        emailError.style.display = "block";
-        return;
-      }
 
       if (!captchaToken) {
         captchaError.style.display = "block";
@@ -168,7 +124,7 @@
       }
 
       try {
-        const res = await fetch("/api/login", {
+        const res = await fetch("/api/admin/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password, captchaToken })
@@ -177,16 +133,13 @@
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          errorBox.textContent = data.error || "Invalid email/password combination";
+          errorBox.textContent = data.error || "Invalid credentials";
           errorBox.style.display = "block";
           if (window.grecaptcha) { try { grecaptcha.reset(); } catch(_){} }
           return;
         }
 
-        localStorage.setItem("user", JSON.stringify(data.user));
-        localStorage.setItem("user_id", data.user.user_id);
-
-        window.location.href = "/welcome";
+        window.location.href = "/admin/dashboard";
 
       } catch (err) {
         errorBox.textContent = "Unable to connect. Please try again.";
