@@ -178,6 +178,32 @@ async function clearLoginAttempts(email) {
   await pool.execute(`DELETE FROM login_attempts WHERE email = ?`, [email]);
 }
 
+
+// ========================================
+// CLEANUP JOB: delete old login_attempts rows
+// ========================================
+const CLEANUP_EVERY_HOURS = 6;
+const RETENTION_DAYS = 7;
+
+async function cleanupLoginAttempts() {
+  try {
+    const [result] = await pool.execute(
+      `DELETE FROM login_attempts
+       WHERE updated_at < (NOW() - INTERVAL ? DAY)`,
+      [RETENTION_DAYS]
+    );
+
+    if (result && typeof result.affectedRows === "number") {
+      console.log(`[CLEANUP] login_attempts: removed ${result.affectedRows} old rows`);
+    } else {
+      console.log("[CLEANUP] login_attempts cleanup executed");
+    }
+  } catch (err) {
+    console.error("[CLEANUP] login_attempts cleanup error:", err.message);
+  }
+}
+
+
 /* ------------------ PAGES ------------------ */
 
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "views", "home.html")));
@@ -458,4 +484,9 @@ app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);
   console.log(`📝 Register: http://localhost:${PORT}/register`);
   console.log(`🔐 Login: http://localhost:${PORT}/login`);
+
+  // Run cleanup at startup, then every X hours
+  cleanupLoginAttempts();
+  setInterval(cleanupLoginAttempts, CLEANUP_EVERY_HOURS * 60 * 60 * 1000);
 });
+
