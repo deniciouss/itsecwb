@@ -6,32 +6,98 @@
   <title>Admin Dashboard • SamgyupGrill</title>
   <link rel="stylesheet" href="/public/css/theme.css">
 </head>
-<body class="grill-bg">
-  <main class="container">
-    <section class="card card-pad" style="max-width:900px; margin: 40px auto;">
-      <div class="form-title">Admin Dashboard</div>
-      <div class="form-sub" id="who">Loading...</div>
 
-      <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
-        <button class="btn btn-ghost" id="logoutBtn">Logout</button>
+<body class="grill-bg">
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/">
+        <div class="logo"></div>
+        <div>Samgyup<span style="color:var(--ember)">Grill</span></div>
+      </a>
+
+      <nav class="nav-links">
+        <a class="btn btn-ghost" href="/login">User Login</a>
+        <button class="btn btn-ghost" id="logoutBtn" type="button">Logout</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card card-pad" style="max-width:980px; margin: 24px auto;">
+      <div class="form-title">Admin Dashboard</div>
+      <div class="form-sub" id="adminInfo">Loading admin profile...</div>
+
+      <div style="margin-top:18px; display:grid; gap:12px;">
+        <div class="card card-pad" style="background:rgba(0,0,0,0.03); border-radius:14px;">
+          <div style="font-weight:900; margin-bottom:6px;">Quick Actions</div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn btn-primary" type="button" disabled>Manage Users (next)</button>
+            <button class="btn btn-primary" type="button" disabled>View Orders (next)</button>
+            <button class="btn btn-primary" type="button" disabled>Reservations (next)</button>
+          </div>
+          <div style="font-size:12px; opacity:.7; margin-top:10px;">
+            These buttons are placeholders. We can wire them to real admin pages/API next.
+          </div>
+        </div>
+
+        <div class="card card-pad" style="border-radius:14px;">
+          <div style="font-weight:900; margin-bottom:6px;">Security Notes</div>
+          <ul style="margin:0; padding-left:18px; opacity:.85;">
+            <li>Admin access is enforced server-side using sessions.</li>
+            <li>Direct URL access is blocked without an active admin session.</li>
+            <li>Login is protected by CAPTCHA, IP rate limiting, and email lockout.</li>
+          </ul>
+        </div>
       </div>
     </section>
   </main>
 
+  <footer class="footer">ITSECWB</footer>
+
   <script>
-    async function loadMe() {
-      const res = await fetch("/api/admin/me");
-      const data = await res.json().catch(() => ({}));
-      document.getElementById("who").textContent =
-        data.admin ? `Logged in as: ${data.admin.full_name} (${data.admin.email})` : "Not logged in";
+    const adminInfoEl = document.getElementById("adminInfo");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+    async function loadAdmin() {
+      try {
+        const res = await fetch("/api/admin/me", { method: "GET" });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok || !data.admin) {
+          // If not logged in, go back to unified login
+          window.location.href = "/login";
+          return;
+        }
+
+        adminInfoEl.innerHTML = `
+          Logged in as <strong>${escapeHtml(data.admin.full_name)}</strong>
+          (<span style="opacity:.85;">${escapeHtml(data.admin.email)}</span>)
+          • Role: <strong>${escapeHtml(data.admin.role)}</strong>
+        `;
+      } catch (e) {
+        adminInfoEl.textContent = "Unable to load admin profile.";
+      }
     }
 
-    document.getElementById("logoutBtn").addEventListener("click", async () => {
-      await fetch("/api/admin/logout", { method: "POST" });
-      window.location.href = "/admin/login";
+    logoutBtn.addEventListener("click", async () => {
+      try {
+        await fetch("/api/admin/logout", { method: "POST" });
+      } finally {
+        window.location.href = "/login";
+      }
     });
 
-    loadMe();
+    // Basic XSS-safe escaping for display
+    function escapeHtml(str) {
+      return String(str || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    loadAdmin();
   </script>
 </body>
 </html>

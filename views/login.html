@@ -11,7 +11,6 @@
 </head>
 
 <body class="grill-bg">
-
   <header class="nav">
     <div class="nav-inner">
       <a class="brand" href="/">
@@ -31,20 +30,17 @@
 
   <main class="container">
     <section class="card card-pad" style="max-width:680px; margin: 0 auto;">
-      
       <div class="form-title">Welcome back</div>
       <div class="form-sub">Sign in to SamgyupGrill</div>
 
-      <!-- Error Message -->
+      <!-- Error message -->
       <div id="loginError"
-           style="display:none; color:var(--ember); padding:12px;
-                  background:#fee2e2; border-radius:10px; margin:16px 0;">
+           class="help error"
+           style="display:none; color:var(--ember); padding:12px; background:#fee2e2; border-radius:10px; margin:16px 0;">
         Login failed
       </div>
 
-      <form id="loginForm" class="form">
-
-        <!-- Email -->
+      <form class="form" id="loginForm">
         <div class="field">
           <div class="label">Email</div>
           <input
@@ -56,9 +52,8 @@
             autocomplete="email"
             maxlength="254"
           />
-          <div id="emailError"
-               style="display:none; color:var(--ember); margin-top:6px;">
-            Please enter a valid email address.
+          <div class="help error" id="emailError" style="display:none; color:var(--ember); margin-top:6px;">
+            Please enter a valid email address
           </div>
         </div>
 
@@ -75,65 +70,103 @@
             maxlength="128"
             autocomplete="current-password"
           />
+          <div class="help error" id="passwordError" style="display:none; color:var(--ember); margin-top:6px;">
+            Password must be at least 8 characters
+          </div>
         </div>
 
-        <!-- CAPTCHA -->
+        <!-- ✅ CAPTCHA required every login -->
         <div class="field">
           <div class="label">Human Check</div>
-          <div class="g-recaptcha"
-               data-sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI">
-          </div>
-          <div id="captchaError"
-               style="display:none; color:var(--ember); margin-top:6px;">
+          <div class="help">Please complete the verification.</div>
+
+          <div class="g-recaptcha" data-sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"></div>
+
+          <div class="help error" id="captchaError" style="display:none; color:var(--ember); margin-top:6px;">
             Please complete the CAPTCHA.
           </div>
         </div>
 
-        <button class="btn btn-primary" type="submit">
+        <button class="btn btn-primary" type="submit" style="padding:12px 16px;">
           Sign in
         </button>
 
-        <div class="help" style="margin-top:14px;">
+        <div class="help">
           New here?
-          <a href="/register"
-             style="color:var(--ember); font-weight:900; text-decoration:none;">
-            Create an account
-          </a>
+          <a href="/register" style="color:var(--ember); font-weight:900; text-decoration:none;">Create an account</a>
         </div>
-
       </form>
-
-      <!-- Admin Section -->
-      <div style="
-        margin-top:28px;
-        padding:16px;
-        border-radius:14px;
-        background:rgba(0,0,0,0.04);
-        text-align:center;
-      ">
-        🔒 <strong>Administrator Access</strong><br>
-        <a href="/admin/login"
-           style="color:var(--ember); font-weight:900; text-decoration:none;">
-          Login as Administrator
-        </a>
-        <div style="font-size:12px; opacity:.7; margin-top:6px;">
-          Only authorized admin accounts can access the admin panel.
-        </div>
-      </div>
-
     </section>
   </main>
 
   <footer class="footer">ITSECWB</footer>
 
   <script>
-    const form = document.getElementById("loginForm");
-    const errorBox = document.getElementById("loginError");
-    const captchaError = document.getElementById("captchaError");
-    const emailError = document.getElementById("emailError");
+    // ========================================
+    // TOAST (verify / verified banners)
+    // ========================================
+    const params = new URLSearchParams(window.location.search);
+
+    function showToast(title, msg) {
+      const wrapId = "toastWrap";
+      let wrap = document.getElementById(wrapId);
+
+      if (!wrap) {
+        wrap = document.createElement("div");
+        wrap.id = wrapId;
+        wrap.style.position = "fixed";
+        wrap.style.top = "76px";
+        wrap.style.right = "18px";
+        wrap.style.zIndex = "9999";
+        wrap.style.display = "grid";
+        wrap.style.gap = "10px";
+        wrap.style.width = "min(420px, calc(100vw - 36px))";
+        document.body.appendChild(wrap);
+      }
+
+      const toast = document.createElement("div");
+      toast.style.display = "flex";
+      toast.style.gap = "12px";
+      toast.style.alignItems = "flex-start";
+      toast.style.padding = "14px 14px";
+      toast.style.borderRadius = "16px";
+      toast.style.border = "1px solid rgba(16,185,129,.22)";
+      toast.style.background = "rgba(16,185,129,.10)";
+      toast.style.boxShadow = "0 18px 45px rgba(2,6,23,.12)";
+
+      toast.innerHTML = `
+        <div style="
+          width:34px;height:34px;border-radius:12px;display:grid;place-items:center;
+          background:rgba(16,185,129,.16);border:1px solid rgba(16,185,129,.22);
+          font-weight:900;color:rgba(5,150,105,.95);flex:0 0 auto;
+        ">✓</div>
+        <div>
+          <div style="font-weight:900;margin:0;">${title}</div>
+          <div style="margin-top:2px;color:rgba(31,41,55,.78);font-weight:650;">${msg}</div>
+        </div>
+        <button aria-label="Close" style="
+          margin-left:auto;background:transparent;border:none;cursor:pointer;
+          color:rgba(31,41,55,.55);font-weight:900;padding:2px 6px;border-radius:10px;
+        ">✕</button>
+      `;
+
+      toast.querySelector("button").addEventListener("click", () => toast.remove());
+      wrap.appendChild(toast);
+
+      setTimeout(() => { if (toast.isConnected) toast.remove(); }, 4500);
+    }
+
+    if (params.get("verify") === "1") {
+      showToast("Check your email 📩", "We sent a verification link. Verify before logging in.");
+      history.replaceState({}, "", "/login");
+    }
+    if (params.get("verified") === "1") {
+      showToast("Email verified ✅", "Your account is activated. You can now log in.");
+      history.replaceState({}, "", "/login");
+    }
 
     // ========================================
-    // STRICT EMAIL VALIDATION (for UX)
+    // STRICT EMAIL VALIDATION (UX)
     // ========================================
     function isValidEmail(email) {
       const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
@@ -145,25 +178,34 @@
       return (el && el.value) ? el.value : "";
     }
 
-    form.addEventListener("submit", async (e) => {
+    // ========================================
+    // LOGIN FORM HANDLER
+    // ========================================
+    document.getElementById('loginForm').addEventListener('submit', async function(e) {
       e.preventDefault();
 
-      errorBox.style.display = "none";
-      captchaError.style.display = "none";
-      emailError.style.display = "none";
+      document.getElementById('emailError').style.display = 'none';
+      document.getElementById('passwordError').style.display = 'none';
+      document.getElementById('captchaError').style.display = 'none';
+      document.getElementById('loginError').style.display = 'none';
 
-      const email = form.email.value.trim();
-      const password = form.password.value.trim();
-      const captchaToken = getCaptchaToken();
+      const formData = new FormData(this);
+      let email = (formData.get('email') || '').trim();
+      let password = (formData.get('password') || '').trim();
 
-      // Strict email validation (UX)
-      if (!isValidEmail(email)) {
-        emailError.style.display = "block";
+      if (!email || !isValidEmail(email)) {
+        document.getElementById('emailError').style.display = 'block';
         return;
       }
 
+      if (!password || password.length < 8) {
+        document.getElementById('passwordError').style.display = 'block';
+        return;
+      }
+
+      const captchaToken = getCaptchaToken();
       if (!captchaToken) {
-        captchaError.style.display = "block";
+        document.getElementById('captchaError').style.display = 'block';
         return;
       }
 
@@ -171,30 +213,73 @@
         const res = await fetch("/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, captchaToken })
+          body: JSON.stringify({ email, password, captchaToken }),
         });
 
-        const data = await res.json().catch(() => ({}));
+        const result = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          errorBox.textContent = data.error || "Invalid email/password combination";
-          errorBox.style.display = "block";
-          if (window.grecaptcha) { try { grecaptcha.reset(); } catch(_){} }
+          // Rate limited
+          if (res.status === 429) {
+            document.getElementById('loginError').textContent =
+              "Too many login attempts. Please try again in 15 minutes.";
+          }
+          // Email locked
+          else if (res.status === 423) {
+            document.getElementById('loginError').textContent =
+              "This account is temporarily locked due to too many failed attempts. Please try again later.";
+          }
+          // Other server-provided errors (captcha/verify/etc)
+          else if (result && result.error) {
+            document.getElementById('loginError').textContent = result.error;
+          }
+          // Generic
+          else {
+            document.getElementById('loginError').textContent =
+              "Invalid email/password combination";
+          }
+
+          document.getElementById('loginError').style.display = 'block';
+
+          // reset captcha for a clean retry
+          if (window.grecaptcha) {
+            try { grecaptcha.reset(); } catch (_) {}
+          }
           return;
         }
 
-        localStorage.setItem("user", JSON.stringify(data.user));
-        localStorage.setItem("user_id", data.user.user_id);
+        // ✅ ADMIN redirect (session-based)
+        if (result.redirectTo) {
+          window.location.href = result.redirectTo;
+          return;
+        }
+
+        // ✅ Normal user login
+        if (!result.user || !result.user.user_id) {
+          document.getElementById('loginError').textContent =
+            "Invalid email/password combination";
+          document.getElementById('loginError').style.display = 'block';
+          if (window.grecaptcha) {
+            try { grecaptcha.reset(); } catch (_) {}
+          }
+          return;
+        }
+
+        const user = result.user;
+        localStorage.setItem("user", JSON.stringify(user));
+        localStorage.setItem("user_id", user.user_id);
 
         window.location.href = "/welcome";
-
       } catch (err) {
-        errorBox.textContent = "Unable to connect. Please try again.";
-        errorBox.style.display = "block";
-        if (window.grecaptcha) { try { grecaptcha.reset(); } catch(_){} }
+        console.error("Login error:", err);
+        document.getElementById('loginError').textContent =
+          "Unable to connect. Please try again.";
+        document.getElementById('loginError').style.display = 'block';
+        if (window.grecaptcha) {
+          try { grecaptcha.reset(); } catch (_) {}
+        }
       }
     });
   </script>
-
 </body>
 </html>
