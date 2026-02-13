@@ -111,9 +111,10 @@ const loginLimiter = rateLimit({
 // VALIDATION FUNCTIONS
 // ========================================
 function isValidEmail(email) {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailRegex = /^[^@\.][^@]*@[^@]+\.[^@]+$/;
   return emailRegex.test(email) && email.length <= 254;
 }
+
 
 // Password policy: 8+ chars, upper, lower, number, special
 function isStrongPassword(pw) {
