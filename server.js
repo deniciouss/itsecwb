@@ -241,9 +241,36 @@ const registerLimiter = rateLimit({
 // ========================================
 // VALIDATION FUNCTIONS
 // ========================================
+function splitEmailParts(email) {
+  const cleanEmail = (email || "").trim();
+
+  if (!cleanEmail || cleanEmail.length > 254) return null;
+
+  const firstAt = cleanEmail.indexOf("@");
+  const lastAt = cleanEmail.lastIndexOf("@");
+
+  if (firstAt <= 0 || firstAt !== lastAt) return null;
+
+  const localPart = cleanEmail.slice(0, firstAt);
+  const domainPart = cleanEmail.slice(firstAt + 1);
+
+  if (!localPart || !domainPart) return null;
+  if (localPart.length > 64) return null;
+  if (domainPart.length > 255) return null;
+
+  return { cleanEmail, localPart, domainPart };
+}
+
 function isValidEmail(email) {
-  const emailRegex = /^[^@\.][^@]*@[^@]+\.[^@]+$/;
-  return emailRegex.test(email) && email.length <= 254;
+  const parts = splitEmailParts(email);
+  if (!parts) return false;
+
+  const { localPart, domainPart } = parts;
+
+  const localRegex = /^(?!.*\.\.)[A-Za-z0-9](?:[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{0,62}[A-Za-z0-9])?$/;
+  const domainRegex = /^(?=.{1,255}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])$/;
+
+  return localRegex.test(localPart) && domainRegex.test(domainPart);
 }
 
 function isValidPHPhone(phone) {
@@ -585,7 +612,8 @@ app.post("/register", registerLimiter, registerUpload, async (req, res) => {
     const captchaToken = req.body["g-recaptcha-response"];
 
     const cleanName = (full_name || "").trim().replace(/\s+/g, " ");
-    const cleanEmail = (email || "").trim().toLowerCase();
+    const emailParts = splitEmailParts(email);
+    const cleanEmail = emailParts ? emailParts.cleanEmail.toLowerCase() : "";
     const cleanPhone = (phone || "").trim();
 
     const captchaOk = await verifyRecaptchaV2(captchaToken, req.ip);
@@ -760,8 +788,9 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       return res.status(400).json({ error: "Invalid input" });
     }
 
-    email = email.trim().toLowerCase();
-    password = password.trim();
+    const emailParts = splitEmailParts(email);
+    email = emailParts ? emailParts.cleanEmail.toLowerCase() : "";
+    password = String(password);
 
     if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid input" });
     if (password.length < 8 || password.length > 128) return res.status(400).json({ error: "Invalid input" });
@@ -859,8 +888,9 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
 
     if (!email || !password) return res.status(400).json({ error: "Invalid input" });
 
-    email = email.trim().toLowerCase();
-    password = password.trim();
+    const emailParts = splitEmailParts(email);
+    email = emailParts ? emailParts.cleanEmail.toLowerCase() : "";
+    password = String(password);
 
     if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid input" });
     if (password.length < 8 || password.length > 128) return res.status(400).json({ error: "Invalid input" });

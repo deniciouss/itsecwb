@@ -128,6 +128,27 @@
       document.getElementById(id).style.display = on ? "block" : "none";
     };
 
+    const isValidEmail = (email) => {
+      const cleanEmail = (email || "").trim();
+
+      if (!cleanEmail || cleanEmail.length > 254) return false;
+
+      const atIndex = cleanEmail.lastIndexOf("@");
+      if (atIndex <= 0 || atIndex !== cleanEmail.indexOf("@")) return false;
+
+      const localPart = cleanEmail.slice(0, atIndex);
+      const domainPart = cleanEmail.slice(atIndex + 1);
+
+      if (!localPart || !domainPart) return false;
+      if (localPart.length > 64) return false;
+      if (domainPart.length > 255) return false;
+
+      const localRegex = /^(?!.*\.\.)[A-Za-z0-9](?:[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{0,62}[A-Za-z0-9])?$/;
+      const domainRegex = /^(?=.{1,255}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])$/;
+
+      return localRegex.test(localPart) && domainRegex.test(domainPart);
+    };
+
     const strongPassword = (pw) => {
       if (!pw) return false;
       if (pw.length < 8) return false;
@@ -164,7 +185,7 @@
       let ok = true;
 
       if (!fullName) { show("nameError", true); ok = false; }
-      if (!email || !/^[^@\.][^@]*@[^@]+\.[^@]+$/.test(email)) { show("emailError", true); ok = false; }
+      if (!email || !isValidEmail(email)) { show("emailError", true); ok = false; }
       if (!validPHPhone(phone)) { show("phoneError", true); ok = false; }
       if (!strongPassword(pw)) { show("passwordError", true); ok = false; }
       if (pw !== cpw) { show("confirmError", true); ok = false; }
