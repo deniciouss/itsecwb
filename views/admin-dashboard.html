@@ -102,6 +102,8 @@
             <li>Admin access is enforced server-side using sessions.</li>
             <li>Direct URL access is blocked without an active admin session.</li>
             <li>Login is protected by CAPTCHA, IP rate limiting, and email lockout.</li>
+            <li>CSRF token is enforced for admin POST actions.</li>
+            <li>Admin session times out after inactivity.</li>
           </ul>
         </div>
 
@@ -131,36 +133,46 @@
     const settingsBtn = document.getElementById("settingsBtn");
     const settingsStatus = document.getElementById("settingsStatus");
 
+    let CSRF = "";
+
     async function loadAdmin() {
-      try {
-        const res = await fetch("/api/admin/me", { method: "GET" });
-        const data = await res.json().catch(() => ({}));
+      const res = await fetch("/api/admin/me", { method: "GET" });
+      const data = await res.json().catch(() => ({}));
 
-        if (!res.ok || !data.admin) {
-          window.location.href = "/login";
-          return;
-        }
-
-        adminInfoEl.innerHTML = `
-          Logged in as <strong>${escapeHtml(data.admin.full_name)}</strong>
-          (<span style="opacity:.85;">${escapeHtml(data.admin.email)}</span>)
-          • Role: <strong>${escapeHtml(data.admin.role)}</strong>
-        `;
-      } catch (e) {
-        adminInfoEl.textContent = "Unable to load admin profile.";
+      if (!res.ok || !data.admin) {
+        window.location.href = "/login";
+        return;
       }
+
+      adminInfoEl.innerHTML = `
+        Logged in as <strong>${escapeHtml(data.admin.full_name)}</strong>
+        (<span style="opacity:.85;">${escapeHtml(data.admin.email)}</span>)
+        • Role: <strong>${escapeHtml(data.admin.role)}</strong>
+      `;
+    }
+
+    async function loadCsrf() {
+      const res = await fetch("/api/admin/csrf", { method: "GET" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.csrfToken) {
+        // if not logged in, redirect
+        window.location.href = "/login";
+        return;
+      }
+      CSRF = data.csrfToken;
     }
 
     logoutBtn.addEventListener("click", async () => {
       try {
-        await fetch("/api/admin/logout", { method: "POST" });
+        await fetch("/api/admin/logout", {
+          method: "POST",
+          headers: { "X-CSRF-Token": CSRF }
+        });
       } finally {
-        // replace so Back won’t show dashboard
         window.location.replace("/login");
       }
     });
 
-    // Basic XSS-safe escaping for display
     function escapeHtml(str) {
       return String(str || "")
         .replaceAll("&", "&amp;")
@@ -186,6 +198,17 @@
       }
     }
 
+    async function apiPost(url, bodyObj) {
+      return fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": CSRF
+        },
+        body: JSON.stringify(bodyObj || {})
+      });
+    }
+
     // ---- Announcements ----
     async function loadAnnouncements() {
       const res = await fetch("/api/admin/announcements");
@@ -202,13 +225,9 @@
         return;
       }
 
-      const res = await fetch("/api/admin/announcements", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message })
-      });
-
+      const res = await apiPost("/api/admin/announcements", { message });
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         announceStatus.textContent = data.error || "Failed to save announcement.";
         return;
@@ -235,13 +254,9 @@
         return;
       }
 
-      const res = await fetch("/api/admin/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note })
-      });
-
+      const res = await apiPost("/api/admin/notes", { note });
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         noteStatus.textContent = data.error || "Failed to save note.";
         return;
@@ -257,6 +272,7 @@
       const res = await fetch("/api/admin/settings");
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.settings) return;
+
       maxRes.value = data.settings.max_reservations_per_slot;
       prepMin.value = data.settings.preparation_time_minutes;
     }
@@ -269,13 +285,9 @@
         preparation_time_minutes: prepMin.value
       };
 
-      const res = await fetch("/api/admin/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
+      const res = await apiPost("/api/admin/settings", payload);
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         settingsStatus.textContent = data.error || "Failed to update settings.";
         return;
@@ -285,11 +297,18 @@
       await loadSettings();
     });
 
-    // init
-    loadAdmin();
-    loadAnnouncements();
-    loadNotes();
-    loadSettings();
+    // init (order matters: must load admin, then csrf, then data)
+    (async function init() {
+      try {
+        await loadAdmin();
+        await loadCsrf();
+        await loadAnnouncements();
+        await loadNotes();
+        await loadSettings();
+      } catch (e) {
+        window.location.href = "/login";
+      }
+    })();
   </script>
 </body>
 </html>
