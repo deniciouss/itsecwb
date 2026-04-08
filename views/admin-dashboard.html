@@ -28,15 +28,71 @@
       <div class="form-sub" id="adminInfo">Loading admin profile...</div>
 
       <div style="margin-top:18px; display:grid; gap:12px;">
-        <div class="card card-pad" style="background:rgba(0,0,0,0.03); border-radius:14px;">
-          <div style="font-weight:900; margin-bottom:6px;">Quick Actions</div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <button class="btn btn-primary" type="button" disabled>Manage Users (next)</button>
-            <button class="btn btn-primary" type="button" disabled>View Orders (next)</button>
-            <button class="btn btn-primary" type="button" disabled>Reservations (next)</button>
+
+        <!-- 1) Announcements (TEXT save + display) -->
+        <div class="card card-pad" style="border-radius:14px;">
+          <div style="font-weight:900; margin-bottom:6px;">Post Announcement</div>
+          <div class="help">Saved announcements appear below (latest first).</div>
+
+          <div class="field" style="margin-top:10px;">
+            <div class="label">Announcement text</div>
+            <textarea id="announceText" class="input" rows="3" maxlength="2000"
+              placeholder="e.g., Branch A is closed today for maintenance."></textarea>
           </div>
-          <div style="font-size:12px; opacity:.7; margin-top:10px;">
-            These buttons are placeholders. We can wire them to real admin pages/API next.
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn btn-primary" id="announceBtn" type="button">Save announcement</button>
+            <div class="help" id="announceStatus" style="align-self:center;"></div>
+          </div>
+
+          <div style="height:10px;"></div>
+          <div style="font-weight:900; margin-bottom:6px;">Recent announcements</div>
+          <ul id="announceList" style="margin:0; padding-left:18px; opacity:.9;"></ul>
+        </div>
+
+        <!-- 2) Kitchen Notes (TEXT save + display) -->
+        <div class="card card-pad" style="border-radius:14px;">
+          <div style="font-weight:900; margin-bottom:6px;">Kitchen Notes</div>
+          <div class="help">Internal notes for staff (demo feature).</div>
+
+          <div class="field" style="margin-top:10px;">
+            <div class="label">Note</div>
+            <textarea id="noteText" class="input" rows="3" maxlength="2000"
+              placeholder="e.g., Restock lettuce and kimchi by 5PM."></textarea>
+          </div>
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn btn-primary" id="noteBtn" type="button">Save note</button>
+            <div class="help" id="noteStatus" style="align-self:center;"></div>
+          </div>
+
+          <div style="height:10px;"></div>
+          <div style="font-weight:900; margin-bottom:6px;">Recent notes</div>
+          <ul id="noteList" style="margin:0; padding-left:18px; opacity:.9;"></ul>
+        </div>
+
+        <!-- 3) Store Settings (NUMERIC inputs) -->
+        <div class="card card-pad" style="border-radius:14px;">
+          <div style="font-weight:900; margin-bottom:6px;">Store Settings</div>
+          <div class="help">Numeric controls used by the system (demo feature).</div>
+
+          <div class="grid-3" style="grid-template-columns: 1fr 1fr 0.6fr; align-items:end;">
+            <div class="field">
+              <div class="label">Max reservations per slot</div>
+              <input id="maxRes" class="input" type="number" min="1" max="500" />
+              <div class="help">Example: 20</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Preparation time (minutes)</div>
+              <input id="prepMin" class="input" type="number" min="1" max="480" />
+              <div class="help">Example: 15</div>
+            </div>
+
+            <div>
+              <button class="btn btn-primary" id="settingsBtn" type="button" style="width:100%;">Save</button>
+              <div class="help" id="settingsStatus" style="margin-top:8px;"></div>
+            </div>
           </div>
         </div>
 
@@ -48,6 +104,7 @@
             <li>Login is protected by CAPTCHA, IP rate limiting, and email lockout.</li>
           </ul>
         </div>
+
       </div>
     </section>
   </main>
@@ -58,13 +115,28 @@
     const adminInfoEl = document.getElementById("adminInfo");
     const logoutBtn = document.getElementById("logoutBtn");
 
+    // New admin action elements
+    const announceText = document.getElementById("announceText");
+    const announceBtn = document.getElementById("announceBtn");
+    const announceStatus = document.getElementById("announceStatus");
+    const announceList = document.getElementById("announceList");
+
+    const noteText = document.getElementById("noteText");
+    const noteBtn = document.getElementById("noteBtn");
+    const noteStatus = document.getElementById("noteStatus");
+    const noteList = document.getElementById("noteList");
+
+    const maxRes = document.getElementById("maxRes");
+    const prepMin = document.getElementById("prepMin");
+    const settingsBtn = document.getElementById("settingsBtn");
+    const settingsStatus = document.getElementById("settingsStatus");
+
     async function loadAdmin() {
       try {
         const res = await fetch("/api/admin/me", { method: "GET" });
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok || !data.admin) {
-          // If not logged in, go back to unified login
           window.location.href = "/login";
           return;
         }
@@ -83,7 +155,8 @@
       try {
         await fetch("/api/admin/logout", { method: "POST" });
       } finally {
-        window.location.href = "/login";
+        // replace so Back won’t show dashboard
+        window.location.replace("/login");
       }
     });
 
@@ -97,7 +170,126 @@
         .replaceAll("'", "&#039;");
     }
 
+    function renderList(ul, items, field) {
+      ul.innerHTML = "";
+      if (!items || items.length === 0) {
+        const li = document.createElement("li");
+        li.textContent = "No items yet.";
+        ul.appendChild(li);
+        return;
+      }
+      for (const it of items) {
+        const li = document.createElement("li");
+        const when = it.created_at ? new Date(it.created_at).toLocaleString() : "";
+        li.innerHTML = `<strong>${escapeHtml(when)}</strong> — ${escapeHtml(it[field])}`;
+        ul.appendChild(li);
+      }
+    }
+
+    // ---- Announcements ----
+    async function loadAnnouncements() {
+      const res = await fetch("/api/admin/announcements");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      renderList(announceList, data.announcements, "message");
+    }
+
+    announceBtn.addEventListener("click", async () => {
+      announceStatus.textContent = "";
+      const message = (announceText.value || "").trim();
+      if (!message) {
+        announceStatus.textContent = "Please enter an announcement.";
+        return;
+      }
+
+      const res = await fetch("/api/admin/announcements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        announceStatus.textContent = data.error || "Failed to save announcement.";
+        return;
+      }
+
+      announceText.value = "";
+      announceStatus.textContent = "Saved.";
+      await loadAnnouncements();
+    });
+
+    // ---- Notes ----
+    async function loadNotes() {
+      const res = await fetch("/api/admin/notes");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      renderList(noteList, data.notes, "note");
+    }
+
+    noteBtn.addEventListener("click", async () => {
+      noteStatus.textContent = "";
+      const note = (noteText.value || "").trim();
+      if (!note) {
+        noteStatus.textContent = "Please enter a note.";
+        return;
+      }
+
+      const res = await fetch("/api/admin/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        noteStatus.textContent = data.error || "Failed to save note.";
+        return;
+      }
+
+      noteText.value = "";
+      noteStatus.textContent = "Saved.";
+      await loadNotes();
+    });
+
+    // ---- Settings ----
+    async function loadSettings() {
+      const res = await fetch("/api/admin/settings");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.settings) return;
+      maxRes.value = data.settings.max_reservations_per_slot;
+      prepMin.value = data.settings.preparation_time_minutes;
+    }
+
+    settingsBtn.addEventListener("click", async () => {
+      settingsStatus.textContent = "";
+
+      const payload = {
+        max_reservations_per_slot: maxRes.value,
+        preparation_time_minutes: prepMin.value
+      };
+
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        settingsStatus.textContent = data.error || "Failed to update settings.";
+        return;
+      }
+
+      settingsStatus.textContent = "Settings saved.";
+      await loadSettings();
+    });
+
+    // init
     loadAdmin();
+    loadAnnouncements();
+    loadNotes();
+    loadSettings();
   </script>
 </body>
 </html>
