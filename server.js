@@ -1,3 +1,5 @@
+// server.js
+
 const express = require("express");
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env.local") });
@@ -85,15 +87,52 @@ if (!fs.existsSync(uploadsDir)) {
   console.log("✅ Uploads directory exists at:", uploadsDir);
 }
 
-// Multer upload setup
+const ALLOWED_IMAGE_MIME = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB
+
+// Generate random filenames so we do not trust the original filename
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-    cb(null, Date.now() + "_" + safeName);
+    const randomName = `${Date.now()}_${crypto.randomBytes(16).toString("hex")}`;
+    cb(null, randomName); // extension added later after backend signature check
   },
 });
-const upload = multer({ storage });
+
+const rawRegisterUpload = multer({
+  storage,
+  limits: {
+    fileSize: MAX_PROFILE_PHOTO_BYTES,
+    files: 1,
+  },
+  fileFilter: (req, file, cb) => {
+    // First layer only: reject obviously wrong MIME types early
+    if (!ALLOWED_IMAGE_MIME.has(file.mimetype)) {
+      return cb(new Error("INVALID_UPLOAD_TYPE"));
+    }
+    cb(null, true);
+  },
+});
+
+// Wrapper so Multer errors become the same generic registration failure
+const registerUpload = (req, res, next) => {
+  rawRegisterUpload.single("photo")(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError) {
+      console.warn("[REGISTER] Multer error:", err.code, err.message);
+    } else {
+      console.warn("[REGISTER] Upload rejected:", err.message);
+    }
+
+    return res.redirect("/register?error=1");
+  });
+};
 
 // ========================================
 // RATE LIMITING (LOGIN ONLY) - BY IP
@@ -115,15 +154,90 @@ function isValidEmail(email) {
   return emailRegex.test(email) && email.length <= 254;
 }
 
+function isValidPHPhone(phone) {
+  return /^09\d{9}$/.test((phone || "").trim());
+}
 
-// Password policy: 8+ chars, upper, lower, number, special
+// Password policy:
+// - min 8 chars
+// - uppercase
+// - lowercase
+// - number
+// - special character
+// - max 72 bytes because bcrypt only uses first 72 bytes
 function isStrongPassword(pw) {
   if (!pw || pw.length < 8) return false;
+  if (Buffer.byteLength(pw, "utf8") > 72) return false;
   if (!/[A-Z]/.test(pw)) return false;
   if (!/[a-z]/.test(pw)) return false;
   if (!/[0-9]/.test(pw)) return false;
   if (!/[^A-Za-z0-9]/.test(pw)) return false;
   return true;
+}
+
+function safeUnlink(filePath) {
+  try {
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (err) {
+    console.warn("[REGISTER] Failed to delete file:", err.message);
+  }
+}
+
+
+// Detect real file type from magic bytes, not extension or frontend input
+function detectImageMimeFromMagic(filePath) {
+  const fd = fs.openSync(filePath, "r");
+  const buffer = Buffer.alloc(12);
+
+  try {
+    fs.readSync(fd, buffer, 0, 12, 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+
+  // WEBP: "RIFF" .... "WEBP"
+  if (
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return "image/webp";
+  }
+
+  return null;
+}
+
+function mimeToSafeExtension(mime) {
+  switch (mime) {
+    case "image/jpeg":
+      return ".jpg";
+    case "image/png":
+      return ".png";
+    case "image/webp":
+      return ".webp";
+    default:
+      return null;
+  }
 }
 
 // Create a verification token (raw + hashed)
@@ -348,41 +462,97 @@ app.get("/verify-email", async (req, res) => {
   }
 });
 
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // max 5 registration attempts per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    return res.redirect("/register?error=1");
+  },
+});
 /* ------------------ REGISTER ------------------ */
-app.post("/register", upload.single("photo"), async (req, res) => {
+app.post("/register", registerLimiter, registerUpload, async (req, res) => {
+  let uploadedFilePath = req.file?.path || null;
+
   try {
     const { full_name, email, phone, password, confirm_password } = req.body;
 
-    // ✅ CAPTCHA token from Google
+    // CAPTCHA token from Google
     const captchaToken = req.body["g-recaptcha-response"];
 
-    // ✅ Verify CAPTCHA server-side (IMPORTANT)
+    // Verify CAPTCHA server-side
     const captchaOk = await verifyRecaptchaV2(captchaToken, req.ip);
     if (!captchaOk) {
       console.warn("[REGISTER] CAPTCHA failed for IP:", req.ip);
+      safeUnlink(uploadedFilePath);
       return res.redirect("/register?error=1");
     }
 
-    // required fields
+    // Required fields
     if (!full_name || !email || !phone || !password || !confirm_password) {
+      safeUnlink(uploadedFilePath);
       return res.redirect("/register?error=1");
     }
 
-    if (!isValidEmail(email)) return res.redirect("/register?error=1");
-    if (password !== confirm_password) return res.redirect("/register?error=1");
-    if (!isStrongPassword(password)) return res.redirect("/register?error=1");
-    if (!req.file) return res.redirect("/register?error=1");
-
-    const cleanName = full_name.trim();
+    const cleanName = full_name.trim().replace(/\s+/g, " ");
     const cleanEmail = email.toLowerCase().trim();
     const cleanPhone = phone.trim();
 
-    const photo_path = "/public/uploads/" + req.file.filename;
+    if (!cleanName || cleanName.length > 160) {
+      safeUnlink(uploadedFilePath);
+      return res.redirect("/register?error=1");
+    }
 
-    // hash password
-    const password_hash = await bcrypt.hash(password, 12);
+    // Keep your current email validation because it is already acceptable and simple
+    if (!isValidEmail(cleanEmail)) {
+      safeUnlink(uploadedFilePath);
+      return res.redirect("/register?error=1");
+    }
 
-    // verification token
+    // Add backend phone validation
+    if (!isValidPHPhone(cleanPhone)) {
+      safeUnlink(uploadedFilePath);
+      return res.redirect("/register?error=1");
+    }
+
+    // Do not trim passwords; compare exactly what user typed
+    if (password !== confirm_password) {
+      safeUnlink(uploadedFilePath);
+      return res.redirect("/register?error=1");
+    }
+
+    if (!isStrongPassword(password)) {
+      safeUnlink(uploadedFilePath);
+      return res.redirect("/register?error=1");
+    }
+
+    if (!req.file || !uploadedFilePath) {
+      return res.redirect("/register?error=1");
+    }
+
+    // BACKEND file signature check
+    const detectedMime = detectImageMimeFromMagic(uploadedFilePath);
+    const safeExt = mimeToSafeExtension(detectedMime);
+
+    if (!detectedMime || !safeExt) {
+      console.warn("[REGISTER] Invalid image signature");
+      safeUnlink(uploadedFilePath);
+      return res.redirect("/register?error=1");
+    }
+
+    // Rename saved file to correct safe extension
+    const finalFilename = `${req.file.filename}${safeExt}`;
+    const finalPath = path.join(uploadsDir, finalFilename);
+    fs.renameSync(uploadedFilePath, finalPath);
+    uploadedFilePath = finalPath;
+
+    const photo_path = `/public/uploads/${finalFilename}`;
+
+    // Hash password with cost factor above 12
+    const password_hash = await bcrypt.hash(password, 13);
+
+    // Email verification token
     const { rawToken, tokenHash } = makeVerificationToken();
     const expires = new Date(Date.now() + 30 * 60 * 1000);
 
@@ -395,31 +565,36 @@ app.post("/register", upload.single("photo"), async (req, res) => {
       [cleanName, cleanEmail, cleanPhone, password_hash, photo_path, tokenHash, expires]
     );
 
-    // Send verification email (don’t crash registration if SMTP fails)
+    // Send verification email
     const baseUrl = (process.env.APP_BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, "");
     const verifyUrl = `${baseUrl}/verify-email?email=${encodeURIComponent(cleanEmail)}&token=${rawToken}`;
 
     try {
-      await sendVerificationEmail({ toEmail: cleanEmail, fullName: cleanName, verifyUrl });
+      await sendVerificationEmail({
+        toEmail: cleanEmail,
+        fullName: cleanName,
+        verifyUrl,
+      });
       return res.redirect("/login?verify=1");
     } catch (mailErr) {
       console.error("Email send failed:", mailErr?.message || mailErr);
-      // Account exists but email couldn’t be sent
       return res.redirect("/login?verify=0");
     }
 
   } catch (err) {
-    // 🔐 SECURITY: log real error server-side only
+    safeUnlink(uploadedFilePath);
+
     if (err.code === "ER_DUP_ENTRY") {
-      console.warn(`[REGISTER] Duplicate email attempt: ${req.body.email}`);
+      console.warn("[REGISTER] Duplicate email attempt");
     } else {
       console.error("[REGISTER] Unexpected error:", err);
     }
 
-    // 🔐 USER SEES ONLY GENERIC ERROR
     return res.redirect("/register?error=1");
   }
 });
+
+
 
 /* ------------------ LOGIN API (UNIFIED) ------------------ */
 app.post("/api/login", loginLimiter, async (req, res) => {
@@ -524,6 +699,8 @@ app.post("/api/login", loginLimiter, async (req, res) => {
   }
 });
 
+
+
 // Optional: stricter rate limit just for admin login
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -532,6 +709,8 @@ const adminLoginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+
 
 app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
   try {
