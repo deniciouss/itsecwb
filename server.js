@@ -10,6 +10,7 @@ const fs = require("fs");
 const bcrypt = require("bcryptjs");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
+const https = require("https");
 const { sendVerificationEmail, verifyTransporter } = require("./mailer");
 
 // Sessions (ADMIN)
@@ -19,8 +20,21 @@ const MySQLStore = require("express-mysql-session")(session);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DEBUG_ERRORS = process.env.DEBUG_ERRORS === "true";
+const USE_HTTPS = process.env.USE_HTTPS === "true";
+const SESSION_IDLE_MINUTES = Number(process.env.SESSION_IDLE_MINUTES || 30);
 
-// ✅ fetch support (Node 18+ has global fetch; otherwise install node-fetch)
+const HTTPS_KEY_PATH =
+  process.env.HTTPS_KEY_PATH || path.join(__dirname, "certs", "localhost-key.pem");
+
+const HTTPS_CERT_PATH =
+  process.env.HTTPS_CERT_PATH || path.join(__dirname, "certs", "localhost.pem");
+
+const HTTPS_PFX_PATH =
+  process.env.HTTPS_PFX_PATH || path.join(__dirname, "certs", "localhost.pfx");
+
+const HTTPS_PFX_PASSWORD = process.env.HTTPS_PFX_PASSWORD || "";
+// fetch support (Node 18+ has global fetch; otherwise install node-fetch)
 const fetchFn = global.fetch
   ? global.fetch
   : (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
@@ -32,13 +46,79 @@ app.use(express.json());
 // serve static files (public/css, public/uploads, etc.)
 app.use("/public", express.static(path.join(__dirname, "public")));
 
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+
+// Simple security headers without adding new packages
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+
+// Prevent browser cache for auth-related pages
+app.use((req, res, next) => {
+  const noStorePaths = new Set(["/login", "/register", "/welcome"]);
+  if (noStorePaths.has(req.path) || req.path.startsWith("/admin/")) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  }
+  next();
+});
+
+// ========================================
+// SIMPLE AUDIT LOGGING
+// ========================================
+const logsDir = path.join(__dirname, "logs");
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+function audit(event, details = {}) {
+  const safe = { ...details };
+
+  // Never log secrets
+  delete safe.password;
+  delete safe.confirm_password;
+  delete safe.rawToken;
+  delete safe.token;
+  delete safe.password_hash;
+  delete safe.verify_token_hash;
+
+  const filename = path.join(logsDir, `app-${new Date().toISOString().slice(0, 10)}.log`);
+  const line =
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      event,
+      ...safe,
+    }) + "\n";
+
+  fs.appendFile(filename, line, (err) => {
+    if (err) {
+      console.error("[AUDIT] write failed:", err.message);
+    }
+  });
+}
+
+function sendDebugOrGenericError(res, err, genericMessage = "Server error", status = 500) {
+  if (DEBUG_ERRORS) {
+    return res
+      .status(status)
+      .type("text/plain")
+      .send(err && err.stack ? err.stack : String(err || genericMessage));
+  }
+
+  return res.status(status).send(genericMessage);
+}
+
 // ========================================
 // SESSION STORE (MySQL) for ADMIN
 // IMPORTANT: express-mysql-session needs callback-based connection
 // ========================================
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "samgyup_user";
-// ✅ support both DB_PASSWORD and DB_PASS to avoid env mismatch
 const DB_PASSWORD = process.env.DB_PASSWORD || process.env.DB_PASS || "";
 const DB_NAME = process.env.DB_NAME || "samgyup_db";
 const DB_CONNECTION_LIMIT = Number(process.env.DB_CONNECTION_LIMIT || 10);
@@ -51,27 +131,33 @@ const sessionDbPool = mysql2.createPool({
   connectionLimit: DB_CONNECTION_LIMIT,
 });
 
+const SESSION_IDLE_MS = SESSION_IDLE_MINUTES * 60 * 1000;
+
 const sessionStore = new MySQLStore(
   {
     clearExpired: true,
     checkExpirationInterval: 15 * 60 * 1000,
-    expiration: 2 * 60 * 60 * 1000, // 2 hours
+    expiration: SESSION_IDLE_MS,
   },
   sessionDbPool
 );
 
 app.use(
   session({
-    name: "sg_admin_sid",
+    name: "id",
     secret: process.env.SESSION_SECRET || "change-this-in-env",
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
+    rolling: true,
+    unset: "destroy",
+    proxy: true,
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: false, // set true if HTTPS
-      maxAge: 2 * 60 * 60 * 1000,
+      secure: USE_HTTPS,
+      maxAge: SESSION_IDLE_MS,
+      path: "/",
     },
   })
 );
@@ -95,12 +181,11 @@ const ALLOWED_IMAGE_MIME = new Set([
 
 const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB
 
-// Generate random filenames so we do not trust the original filename
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
     const randomName = `${Date.now()}_${crypto.randomBytes(16).toString("hex")}`;
-    cb(null, randomName); // extension added later after backend signature check
+    cb(null, randomName);
   },
 });
 
@@ -111,7 +196,6 @@ const rawRegisterUpload = multer({
     files: 1,
   },
   fileFilter: (req, file, cb) => {
-    // First layer only: reject obviously wrong MIME types early
     if (!ALLOWED_IMAGE_MIME.has(file.mimetype)) {
       return cb(new Error("INVALID_UPLOAD_TYPE"));
     }
@@ -119,7 +203,6 @@ const rawRegisterUpload = multer({
   },
 });
 
-// Wrapper so Multer errors become the same generic registration failure
 const registerUpload = (req, res, next) => {
   rawRegisterUpload.single("photo")(req, res, (err) => {
     if (!err) return next();
@@ -135,15 +218,24 @@ const registerUpload = (req, res, next) => {
 };
 
 // ========================================
-// RATE LIMITING (LOGIN ONLY) - BY IP
+// RATE LIMITING
 // ========================================
-
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
   message: { error: "Too many login attempts. Please try again in 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    return res.redirect("/register?error=1");
+  },
 });
 
 // ========================================
@@ -158,13 +250,6 @@ function isValidPHPhone(phone) {
   return /^09\d{9}$/.test((phone || "").trim());
 }
 
-// Password policy:
-// - min 8 chars
-// - uppercase
-// - lowercase
-// - number
-// - special character
-// - max 72 bytes because bcrypt only uses first 72 bytes
 function isStrongPassword(pw) {
   if (!pw || pw.length < 8) return false;
   if (Buffer.byteLength(pw, "utf8") > 72) return false;
@@ -185,8 +270,6 @@ function safeUnlink(filePath) {
   }
 }
 
-
-// Detect real file type from magic bytes, not extension or frontend input
 function detectImageMimeFromMagic(filePath) {
   const fd = fs.openSync(filePath, "r");
   const buffer = Buffer.alloc(12);
@@ -240,14 +323,15 @@ function mimeToSafeExtension(mime) {
   }
 }
 
-// Create a verification token (raw + hashed)
 function makeVerificationToken() {
   const rawToken = crypto.randomBytes(32).toString("hex");
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
   return { rawToken, tokenHash };
 }
 
-// ✅ Google reCAPTCHA v2 verification (server-side)
+// ========================================
+// Google reCAPTCHA v2 verification (server-side)
+// ========================================
 async function verifyRecaptchaV2(token, ip) {
   const secret = process.env.RECAPTCHA_SECRET_KEY;
 
@@ -300,7 +384,6 @@ async function recordFailedAttempt(email) {
   const now = new Date();
   const row = await getAttemptRow(email);
 
-  // Create row if missing
   if (!row) {
     await pool.execute(
       `INSERT INTO login_attempts (email, failed_count, first_failed_at, last_failed_at, lock_until)
@@ -310,14 +393,13 @@ async function recordFailedAttempt(email) {
     return;
   }
 
-  // If already locked, keep it locked (do not extend)
   if (row.lock_until && new Date(row.lock_until) > now) return;
 
   const firstFailedAt = row.first_failed_at ? new Date(row.first_failed_at) : null;
   const withinWindow =
-    firstFailedAt && (now - firstFailedAt) <= (LOCK_WINDOW_MIN * 60 * 1000);
+    firstFailedAt && (now - firstFailedAt) <= LOCK_WINDOW_MIN * 60 * 1000;
 
-  const nextCount = withinWindow ? (row.failed_count + 1) : 1;
+  const nextCount = withinWindow ? row.failed_count + 1 : 1;
   const nextFirstFailedAt = withinWindow ? firstFailedAt : now;
 
   let lockUntil = null;
@@ -341,8 +423,7 @@ async function clearLoginAttempts(email) {
 }
 
 // ========================================
-// CLEANUP JOB (email attempts table)
-// Uses last_failed_at so you don't need an updated_at column
+// CLEANUP JOB
 // ========================================
 const CLEANUP_EVERY_HOURS = 6;
 const RETENTION_DAYS = 7;
@@ -361,12 +442,16 @@ async function cleanupLoginAttempts() {
   }
 }
 
+// start cleanup on boot, then every X hours
+cleanupLoginAttempts();
+setInterval(cleanupLoginAttempts, CLEANUP_EVERY_HOURS * 60 * 60 * 1000);
+
 // ========================================
 // ADMIN GUARD (session-based)
 // ========================================
 function requireAdmin(req, res, next) {
   if (!req.session || !req.session.admin) {
-    return res.redirect("/login"); // unified login
+    return res.redirect("/login");
   }
   next();
 }
@@ -378,20 +463,20 @@ app.get("/login", (req, res) => res.sendFile(path.join(__dirname, "views", "logi
 app.get("/home", (req, res) => res.sendFile(path.join(__dirname, "views", "home.html")));
 app.get("/welcome", (req, res) => res.sendFile(path.join(__dirname, "views", "welcome.html")));
 
-// Admin dashboard (protected)
 app.get("/admin/dashboard", requireAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, "views", "admin-dashboard.html"));
 });
 
-// Optional admin helpers
 app.get("/api/admin/me", (req, res) => {
-  if (!req.session || !req.session.admin) return res.status(401).json({ error: "Not logged in" });
+  if (!req.session || !req.session.admin) {
+    return res.status(401).json({ error: "Not logged in" });
+  }
   return res.json({ admin: req.session.admin });
 });
 
 app.post("/api/admin/logout", (req, res) => {
   req.session.destroy(() => {
-    res.clearCookie("sg_admin_sid");
+    res.clearCookie("id", { path: "/" });
     return res.json({ message: "Logged out" });
   });
 });
@@ -418,7 +503,11 @@ app.get("/verify-email", async (req, res) => {
     const token = (req.query.token || "").toString().trim();
 
     if (!email || !token) {
-      return res.status(400).send("Invalid verification link.");
+      audit("verify_email.failed", {
+        ip: req.ip,
+        reason: "MISSING_EMAIL_OR_TOKEN",
+      });
+      return res.status(400).send("Invalid or expired verification link.");
     }
 
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
@@ -432,116 +521,166 @@ app.get("/verify-email", async (req, res) => {
     );
 
     if (rows.length === 0) {
+      audit("verify_email.failed", {
+        email,
+        ip: req.ip,
+        reason: "TOKEN_NOT_FOUND",
+      });
       return res.status(400).send("Invalid or expired verification link.");
     }
 
     const user = rows[0];
 
-    // Already verified
     if (user.is_verified === 1) {
+      audit("verify_email.already_verified", {
+        email,
+        ip: req.ip,
+        user_id: user.id,
+      });
       return res.redirect("/login?verified=1");
     }
 
-    // Expired?
     if (user.verify_token_expires && new Date(user.verify_token_expires) < new Date()) {
-      return res.status(400).send("Verification link expired. Please register again.");
+      audit("verify_email.failed", {
+        email,
+        ip: req.ip,
+        user_id: user.id,
+        reason: "TOKEN_EXPIRED",
+      });
+      return res.status(400).send("Invalid or expired verification link.");
     }
 
-    // Verify user
     await pool.execute(
       `UPDATE users
-       SET is_verified = 1, verify_token_hash = NULL, verify_token_expires = NULL
+       SET is_verified = 1,
+           verify_token_hash = NULL,
+           verify_token_expires = NULL
        WHERE id = ?`,
       [user.id]
     );
 
+    audit("verify_email.success", {
+      email,
+      ip: req.ip,
+      user_id: user.id,
+    });
+
     return res.redirect("/login?verified=1");
   } catch (err) {
-    console.error("Verify email error:", err.message);
-    return res.status(500).send("Server error");
+    audit("verify_email.error", {
+      ip: req.ip,
+      path: req.originalUrl,
+      message: err.message,
+    });
+    return sendDebugOrGenericError(res, err, "Server error", 500);
   }
 });
 
-const registerLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // max 5 registration attempts per IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    return res.redirect("/register?error=1");
-  },
-});
 /* ------------------ REGISTER ------------------ */
 app.post("/register", registerLimiter, registerUpload, async (req, res) => {
   let uploadedFilePath = req.file?.path || null;
 
   try {
     const { full_name, email, phone, password, confirm_password } = req.body;
-
-    // CAPTCHA token from Google
     const captchaToken = req.body["g-recaptcha-response"];
 
-    // Verify CAPTCHA server-side
+    const cleanName = (full_name || "").trim().replace(/\s+/g, " ");
+    const cleanEmail = (email || "").trim().toLowerCase();
+    const cleanPhone = (phone || "").trim();
+
     const captchaOk = await verifyRecaptchaV2(captchaToken, req.ip);
     if (!captchaOk) {
-      console.warn("[REGISTER] CAPTCHA failed for IP:", req.ip);
       safeUnlink(uploadedFilePath);
+      audit("register.failed", {
+        email: cleanEmail || undefined,
+        ip: req.ip,
+        reason: "CAPTCHA_FAILED",
+      });
       return res.redirect("/register?error=1");
     }
 
-    // Required fields
-    if (!full_name || !email || !phone || !password || !confirm_password) {
+    if (!cleanName || !cleanEmail || !cleanPhone || !password || !confirm_password) {
       safeUnlink(uploadedFilePath);
+      audit("register.failed", {
+        email: cleanEmail || undefined,
+        ip: req.ip,
+        reason: "MISSING_REQUIRED_FIELDS",
+      });
       return res.redirect("/register?error=1");
     }
 
-    const cleanName = full_name.trim().replace(/\s+/g, " ");
-    const cleanEmail = email.toLowerCase().trim();
-    const cleanPhone = phone.trim();
-
-    if (!cleanName || cleanName.length > 160) {
+    if (cleanName.length < 2 || cleanName.length > 160) {
       safeUnlink(uploadedFilePath);
+      audit("register.failed", {
+        email: cleanEmail,
+        ip: req.ip,
+        reason: "INVALID_FULL_NAME",
+      });
       return res.redirect("/register?error=1");
     }
 
-    // Keep your current email validation because it is already acceptable and simple
     if (!isValidEmail(cleanEmail)) {
       safeUnlink(uploadedFilePath);
+      audit("register.failed", {
+        email: cleanEmail,
+        ip: req.ip,
+        reason: "INVALID_EMAIL",
+      });
       return res.redirect("/register?error=1");
     }
 
-    // Add backend phone validation
     if (!isValidPHPhone(cleanPhone)) {
       safeUnlink(uploadedFilePath);
+      audit("register.failed", {
+        email: cleanEmail,
+        ip: req.ip,
+        reason: "INVALID_PHONE",
+      });
       return res.redirect("/register?error=1");
     }
 
-    // Do not trim passwords; compare exactly what user typed
     if (password !== confirm_password) {
       safeUnlink(uploadedFilePath);
+      audit("register.failed", {
+        email: cleanEmail,
+        ip: req.ip,
+        reason: "PASSWORD_MISMATCH",
+      });
       return res.redirect("/register?error=1");
     }
 
     if (!isStrongPassword(password)) {
       safeUnlink(uploadedFilePath);
+      audit("register.failed", {
+        email: cleanEmail,
+        ip: req.ip,
+        reason: "WEAK_PASSWORD",
+      });
       return res.redirect("/register?error=1");
     }
 
     if (!req.file || !uploadedFilePath) {
+      audit("register.failed", {
+        email: cleanEmail,
+        ip: req.ip,
+        reason: "MISSING_PHOTO",
+      });
       return res.redirect("/register?error=1");
     }
 
-    // BACKEND file signature check
     const detectedMime = detectImageMimeFromMagic(uploadedFilePath);
     const safeExt = mimeToSafeExtension(detectedMime);
 
     if (!detectedMime || !safeExt) {
-      console.warn("[REGISTER] Invalid image signature");
       safeUnlink(uploadedFilePath);
+      audit("register.failed", {
+        email: cleanEmail,
+        ip: req.ip,
+        reason: "INVALID_IMAGE_SIGNATURE",
+      });
       return res.redirect("/register?error=1");
     }
 
-    // Rename saved file to correct safe extension
     const finalFilename = `${req.file.filename}${safeExt}`;
     const finalPath = path.join(uploadsDir, finalFilename);
     fs.renameSync(uploadedFilePath, finalPath);
@@ -549,14 +688,11 @@ app.post("/register", registerLimiter, registerUpload, async (req, res) => {
 
     const photo_path = `/public/uploads/${finalFilename}`;
 
-    // Hash password with cost factor above 12
     const password_hash = await bcrypt.hash(password, 13);
 
-    // Email verification token
     const { rawToken, tokenHash } = makeVerificationToken();
     const expires = new Date(Date.now() + 30 * 60 * 1000);
 
-    // Insert user as NOT verified
     await pool.execute(
       `INSERT INTO users
         (full_name, email, phone, password_hash, photo_path, is_verified, verify_token_hash, verify_token_expires)
@@ -565,9 +701,15 @@ app.post("/register", registerLimiter, registerUpload, async (req, res) => {
       [cleanName, cleanEmail, cleanPhone, password_hash, photo_path, tokenHash, expires]
     );
 
-    // Send verification email
+    audit("register.success", {
+      email: cleanEmail,
+      ip: req.ip,
+      photo_path,
+    });
+
     const baseUrl = (process.env.APP_BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, "");
-    const verifyUrl = `${baseUrl}/verify-email?email=${encodeURIComponent(cleanEmail)}&token=${rawToken}`;
+    const verifyUrl =
+      `${baseUrl}/verify-email?email=${encodeURIComponent(cleanEmail)}&token=${rawToken}`;
 
     try {
       await sendVerificationEmail({
@@ -575,33 +717,45 @@ app.post("/register", registerLimiter, registerUpload, async (req, res) => {
         fullName: cleanName,
         verifyUrl,
       });
+
+      audit("register.email_sent", {
+        email: cleanEmail,
+        ip: req.ip,
+      });
+
       return res.redirect("/login?verify=1");
     } catch (mailErr) {
-      console.error("Email send failed:", mailErr?.message || mailErr);
+      audit("register.email_send_failed", {
+        email: cleanEmail,
+        ip: req.ip,
+        message: mailErr.message,
+      });
+
       return res.redirect("/login?verify=0");
     }
-
   } catch (err) {
     safeUnlink(uploadedFilePath);
 
-    if (err.code === "ER_DUP_ENTRY") {
-      console.warn("[REGISTER] Duplicate email attempt");
-    } else {
-      console.error("[REGISTER] Unexpected error:", err);
+    audit("register.error", {
+      email: req.body?.email ? String(req.body.email).trim().toLowerCase() : undefined,
+      ip: req.ip,
+      code: err.code || "UNEXPECTED_ERROR",
+      message: err.message,
+    });
+
+    if (DEBUG_ERRORS) {
+      return sendDebugOrGenericError(res, err, "Registration failed", 500);
     }
 
     return res.redirect("/register?error=1");
   }
 });
 
-
-
 /* ------------------ LOGIN API (UNIFIED) ------------------ */
 app.post("/api/login", loginLimiter, async (req, res) => {
   try {
     let { email, password, captchaToken } = req.body;
 
-    // INPUT VALIDATION
     if (!email || !password) {
       return res.status(400).json({ error: "Invalid input" });
     }
@@ -612,20 +766,17 @@ app.post("/api/login", loginLimiter, async (req, res) => {
     if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid input" });
     if (password.length < 8 || password.length > 128) return res.status(400).json({ error: "Invalid input" });
 
-    // ✅ CAPTCHA REQUIRED EVERY LOGIN
     const captchaOk = await verifyRecaptchaV2(captchaToken, req.ip);
     if (!captchaOk) {
       return res.status(400).json({ error: "CAPTCHA verification failed" });
     }
 
-    // ✅ EMAIL LOCK CHECK
     if (await isEmailLocked(email)) {
       return res.status(423).json({
         error: "Account temporarily locked due to too many failed attempts. Please try again later.",
       });
     }
 
-    // ✅ include role
     const [rows] = await pool.execute(
       `SELECT
          id AS user_id,
@@ -642,7 +793,6 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       [email]
     );
 
-    // Generic response (but still record failure)
     if (rows.length === 0) {
       await recordFailedAttempt(email);
       return res.status(401).json({ error: "Invalid credentials" });
@@ -650,9 +800,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 
     const user = rows[0];
 
-    // Block login if not verified
     if (user.is_verified !== 1) {
-      // counts as a failure too
       await recordFailedAttempt(email);
       return res.status(403).json({ error: "Please verify your email before logging in." });
     }
@@ -664,10 +812,8 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // ✅ SUCCESS: clear attempts
     await clearLoginAttempts(email);
 
-    // ✅ ADMIN: create session and redirect to admin dashboard
     if (user.role === "admin") {
       req.session.admin = {
         user_id: user.user_id,
@@ -682,7 +828,6 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       });
     }
 
-    // ✅ NORMAL USER
     return res.json({
       message: "Login successful",
       user: {
@@ -699,8 +844,6 @@ app.post("/api/login", loginLimiter, async (req, res) => {
   }
 });
 
-
-
 // Optional: stricter rate limit just for admin login
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -709,8 +852,6 @@ const adminLoginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-
-
 
 app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
   try {
@@ -724,13 +865,11 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
     if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid input" });
     if (password.length < 8 || password.length > 128) return res.status(400).json({ error: "Invalid input" });
 
-    // ✅ CAPTCHA REQUIRED (since you chose every login)
     const captchaOk = await verifyRecaptchaV2(captchaToken, req.ip);
     if (!captchaOk) {
       return res.status(400).json({ error: "CAPTCHA verification failed" });
     }
 
-    // ✅ Email lock still applies
     if (await isEmailLocked(email)) {
       return res.status(423).json({ error: "Account temporarily locked. Please try again later." });
     }
@@ -743,7 +882,6 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
       [email]
     );
 
-    // Generic failure
     if (rows.length === 0) {
       await recordFailedAttempt(email);
       return res.status(401).json({ error: "Invalid credentials" });
@@ -751,7 +889,6 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
 
     const user = rows[0];
 
-    // Must be admin
     if (user.role !== "admin") {
       await recordFailedAttempt(email);
       return res.status(403).json({ error: "Access denied" });
@@ -770,7 +907,6 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
 
     await clearLoginAttempts(email);
 
-    // ✅ Create admin session
     req.session.admin = {
       user_id: user.id,
       full_name: user.full_name,
@@ -785,26 +921,81 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
   }
 });
 
-app.post("/api/admin/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie("sg_admin_sid");
-    return res.json({ message: "Logged out" });
-  });
-});
+// ========================================
+// GLOBAL ERROR HANDLER
+// ========================================
+app.use((err, req, res, next) => {
+  console.error("[UNHANDLED]", err);
 
-app.get("/api/admin/me", (req, res) => {
-  if (!req.session || !req.session.admin) return res.status(401).json({ error: "Not logged in" });
-  return res.json({ admin: req.session.admin });
+  audit("app.error", {
+    ip: req.ip,
+    method: req.method,
+    path: req.originalUrl,
+    message: err.message,
+  });
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  if (req.originalUrl.startsWith("/api/")) {
+    if (DEBUG_ERRORS) {
+      return res.status(500).json({
+        error: err.message,
+        stack: err.stack,
+      });
+    }
+
+    return res.status(500).json({ error: "Server error" });
+  }
+
+  return sendDebugOrGenericError(res, err, "Server error", 500);
 });
 
 /* ------------------ START ------------------ */
-app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
-  console.log(`📝 Register: http://localhost:${PORT}/register`);
-  console.log(`🔐 Login: http://localhost:${PORT}/login`);
-  console.log(`🛡 Admin dashboard: http://localhost:${PORT}/admin/dashboard`);
+function startServer() {
+  if (USE_HTTPS) {
+    try {
+      // Prefer PFX on Windows if available
+      if (fs.existsSync(HTTPS_PFX_PATH)) {
+        const pfx = fs.readFileSync(HTTPS_PFX_PATH);
 
-  // cleanup at startup + every few hours
-  cleanupLoginAttempts();
-  setInterval(cleanupLoginAttempts, CLEANUP_EVERY_HOURS * 60 * 60 * 1000);
-});
+        https.createServer(
+          {
+            pfx,
+            passphrase: HTTPS_PFX_PASSWORD,
+          },
+          app
+        ).listen(PORT, () => {
+          console.log(`✅ HTTPS server running at https://localhost:${PORT}`);
+          console.log(`📝 Register: https://localhost:${PORT}/register`);
+          console.log(`🔐 Login: https://localhost:${PORT}/login`);
+        });
+
+        return;
+      }
+
+      // Fallback to PEM files
+      const key = fs.readFileSync(HTTPS_KEY_PATH);
+      const cert = fs.readFileSync(HTTPS_CERT_PATH);
+
+      https.createServer({ key, cert }, app).listen(PORT, () => {
+        console.log(`✅ HTTPS server running at https://localhost:${PORT}`);
+        console.log(`📝 Register: https://localhost:${PORT}/register`);
+        console.log(`🔐 Login: https://localhost:${PORT}/login`);
+      });
+    } catch (err) {
+      console.error("❌ HTTPS startup failed:", err.message);
+      process.exit(1);
+    }
+    return;
+  }
+
+  app.listen(PORT, () => {
+    console.log(`✅ HTTP server running at http://localhost:${PORT}`);
+    console.log(`📝 Register: http://localhost:${PORT}/register`);
+    console.log(`🔐 Login: http://localhost:${PORT}/login`);
+  });
+}
+
+startServer();
