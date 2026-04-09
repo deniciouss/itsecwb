@@ -1,0 +1,6 @@
+{"ts":"2026-04-09T09:13:12.229Z","event":"register.success","email":"emmanuelandrew.ting@gmail.com","ip":"::1","photo_path":"/public/uploads/1775725991406_c904181781f87dd204dc3fa208662e85.jpg"}
+{"ts":"2026-04-09T09:13:15.270Z","event":"register.email_sent","email":"emmanuelandrew.ting@gmail.com","ip":"::1"}
+{"ts":"2026-04-09T09:13:44.737Z","event":"verify_email.failed","email":"emmanuelandrew.ting@gmail.com","ip":"::1","reason":"TOKEN_NOT_FOUND"}
+{"ts":"2026-04-09T09:14:05.321Z","event":"verify_email.failed","email":"emmanuelandrew.ting@gmail.com","ip":"::1","reason":"TOKEN_NOT_FOUND"}
+{"ts":"2026-04-09T09:18:10.341Z","event":"verify_email.failed","email":"emmanuelandrew.ting@gmail.com","ip":"::1","reason":"TOKEN_NOT_FOUND"}
+{"ts":"2026-04-09T09:19:29.199Z","event":"verify_email.success","email":"emmanuelandrew.ting@gmail.com","ip":"::1","user_id":1}

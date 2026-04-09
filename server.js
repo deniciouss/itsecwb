@@ -58,6 +58,11 @@ app.use((req, res, next) => {
   next();
 });
 
+//Block access to logs directory
+app.use("/logs", (req, res) => {
+  return res.status(403).send("Forbidden");
+});
+
 // Prevent browser cache for auth-related pages
 app.use((req, res, next) => {
   const noStorePaths = new Set(["/login", "/register", "/welcome"]);
@@ -613,6 +618,7 @@ app.post("/api/admin/announcements", requireAdmin, async (req, res) => {
       ip: req.ip,
       adminEmail: req.session?.admin?.email,
       length: message.length,
+      preview: message.slice(0, 80),
     });
 
     return res.json({ message: "Announcement saved" });
@@ -658,6 +664,7 @@ app.post("/api/admin/notes", requireAdmin, async (req, res) => {
       ip: req.ip,
       adminEmail: req.session?.admin?.email,
       length: note.length,
+      preview: note.slice(0, 80), 
     });
 
     return res.json({ message: "Note saved" });
@@ -720,6 +727,8 @@ app.post("/api/admin/settings", requireAdmin, async (req, res) => {
     adminLog("INFO", "Admin settings updated", {
       ip: req.ip,
       adminEmail: req.session?.admin?.email,
+      max_reservations_per_slot: maxRes,
+      preparation_time_minutes: prepMin,
       max_reservations_per_slot: maxRes,
       preparation_time_minutes: prepMin,
     });
