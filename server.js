@@ -1711,6 +1711,10 @@ app.post("/api/login", loginLimiter, async (req, res) => {
     let { email, password, captchaToken } = req.body;
 
     if (!email || !password) {
+      audit("auth.login.failed", {
+        ip: req.ip,
+        reason: "MISSING_INPUT",
+      });
       return res.status(400).json({ error: "Invalid input" });
     }
 
@@ -1718,15 +1722,39 @@ app.post("/api/login", loginLimiter, async (req, res) => {
     email = emailParts ? emailParts.cleanEmail.toLowerCase() : "";
     password = String(password);
 
-    if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid input" });
-    if (password.length < 8 || password.length > 128) return res.status(400).json({ error: "Invalid input" });
+    if (!isValidEmail(email)) {
+      audit("auth.login.failed", {
+        ip: req.ip,
+        email,
+        reason: "INVALID_EMAIL_FORMAT",
+      });
+      return res.status(400).json({ error: "Invalid input" });
+    }
+
+    if (password.length < 8 || password.length > 128) {
+      audit("auth.login.failed", {
+        ip: req.ip,
+        email,
+        reason: "INVALID_PASSWORD_LENGTH",
+      });
+      return res.status(400).json({ error: "Invalid input" });
+    }
 
     const captchaOk = await verifyRecaptchaV2(captchaToken, req.ip);
     if (!captchaOk) {
+      audit("auth.login.failed", {
+        ip: req.ip,
+        email,
+        reason: "CAPTCHA_FAILED",
+      });
       return res.status(400).json({ error: "CAPTCHA verification failed" });
     }
 
     if (await isEmailLocked(email)) {
+      audit("auth.login.locked", {
+        ip: req.ip,
+        email,
+      });
       return res.status(423).json({
         error: "Account temporarily locked due to too many failed attempts. Please try again later.",
       });
@@ -1750,6 +1778,13 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 
     if (rows.length === 0) {
       await recordFailedAttempt(email);
+
+      audit("auth.login.failed", {
+        ip: req.ip,
+        email,
+        reason: "EMAIL_NOT_FOUND",
+      });
+
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -1757,6 +1792,14 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 
     if (user.is_verified !== 1) {
       await recordFailedAttempt(email);
+
+      audit("auth.login.failed", {
+        ip: req.ip,
+        email,
+        user_id: user.user_id,
+        reason: "EMAIL_NOT_VERIFIED",
+      });
+
       return res.status(403).json({ error: "Please verify your email before logging in." });
     }
 
@@ -1764,6 +1807,14 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 
     if (!passwordMatch) {
       await recordFailedAttempt(email);
+
+      audit("auth.login.failed", {
+        ip: req.ip,
+        email,
+        user_id: user.user_id,
+        reason: "WRONG_PASSWORD",
+      });
+
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -1780,6 +1831,19 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       req.session.admin_last_activity = Date.now();
       ensureCsrfToken(req);
 
+      audit("auth.admin_login.success", {
+        ip: req.ip,
+        email: user.email,
+        user_id: user.user_id,
+        role: user.role,
+      });
+
+      adminLog("INFO", "Admin login successful", {
+        ip: req.ip,
+        adminEmail: user.email,
+        user_id: user.user_id,
+      });
+
       return res.json({
         message: "Admin login successful",
         redirectTo: "/admin/dashboard",
@@ -1794,6 +1858,13 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       role: user.role || "customer",
     };
 
+    audit("auth.login.success", {
+      ip: req.ip,
+      email: user.email,
+      user_id: user.user_id,
+      role: user.role || "customer",
+    });
+
     return req.session.save(() => {
       return res.json({
         message: "Login successful",
@@ -1807,7 +1878,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
         },
       });
     });
-    } catch (err) {
+  } catch (err) {
     console.error("Login error:", err.message);
     audit("auth.login.error", {
       ip: req.ip,
@@ -1822,21 +1893,51 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
   try {
     let { email, password, captchaToken } = req.body;
 
-    if (!email || !password) return res.status(400).json({ error: "Invalid input" });
+    if (!email || !password) {
+      audit("auth.admin_login.failed", {
+        ip: req.ip,
+        reason: "MISSING_INPUT",
+      });
+      return res.status(400).json({ error: "Invalid input" });
+    }
 
     const emailParts = splitEmailParts(email);
     email = emailParts ? emailParts.cleanEmail.toLowerCase() : "";
     password = String(password);
 
-    if (!isValidEmail(email)) return res.status(400).json({ error: "Invalid input" });
-    if (password.length < 8 || password.length > 128) return res.status(400).json({ error: "Invalid input" });
+    if (!isValidEmail(email)) {
+      audit("auth.admin_login.failed", {
+        ip: req.ip,
+        email,
+        reason: "INVALID_EMAIL_FORMAT",
+      });
+      return res.status(400).json({ error: "Invalid input" });
+    }
+
+    if (password.length < 8 || password.length > 128) {
+      audit("auth.admin_login.failed", {
+        ip: req.ip,
+        email,
+        reason: "INVALID_PASSWORD_LENGTH",
+      });
+      return res.status(400).json({ error: "Invalid input" });
+    }
 
     const captchaOk = await verifyRecaptchaV2(captchaToken, req.ip);
     if (!captchaOk) {
+      audit("auth.admin_login.failed", {
+        ip: req.ip,
+        email,
+        reason: "CAPTCHA_FAILED",
+      });
       return res.status(400).json({ error: "CAPTCHA verification failed" });
     }
 
     if (await isEmailLocked(email)) {
+      audit("auth.admin_login.locked", {
+        ip: req.ip,
+        email,
+      });
       return res.status(423).json({ error: "Account temporarily locked. Please try again later." });
     }
 
@@ -1850,6 +1951,13 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
 
     if (rows.length === 0) {
       await recordFailedAttempt(email);
+
+      audit("auth.admin_login.failed", {
+        ip: req.ip,
+        email,
+        reason: "EMAIL_NOT_FOUND",
+      });
+
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -1857,17 +1965,41 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
 
     if (user.role !== "admin") {
       await recordFailedAttempt(email);
+
+      audit("auth.admin_login.failed", {
+        ip: req.ip,
+        email,
+        user_id: user.id,
+        reason: "ACCESS_DENIED_NOT_ADMIN",
+      });
+
       return res.status(403).json({ error: "Access denied" });
     }
 
     if (user.is_verified !== 1) {
       await recordFailedAttempt(email);
+
+      audit("auth.admin_login.failed", {
+        ip: req.ip,
+        email,
+        user_id: user.id,
+        reason: "EMAIL_NOT_VERIFIED",
+      });
+
       return res.status(403).json({ error: "Please verify your email before logging in." });
     }
 
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) {
       await recordFailedAttempt(email);
+
+      audit("auth.admin_login.failed", {
+        ip: req.ip,
+        email,
+        user_id: user.id,
+        reason: "WRONG_PASSWORD",
+      });
+
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -1883,8 +2015,21 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
     req.session.admin_last_activity = Date.now();
     ensureCsrfToken(req);
 
+    audit("auth.admin_login.success", {
+      ip: req.ip,
+      email: user.email,
+      user_id: user.id,
+      role: user.role,
+    });
+
+    adminLog("INFO", "Admin login successful", {
+      ip: req.ip,
+      adminEmail: user.email,
+      user_id: user.id,
+    });
+
     return res.json({ message: "Admin login successful", redirectTo: "/admin/dashboard" });
-    } catch (err) {
+  } catch (err) {
     console.error("Admin login error:", err.message);
     audit("auth.admin_login.error", {
       ip: req.ip,
