@@ -1,0 +1,15 @@
+[2026-04-09T07:51:55.521Z] [INFO] Announcement created {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","length":17}
+[2026-04-09T07:52:40.512Z] [INFO] Kitchen note created {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","length":5}
+[2026-04-09T08:11:38.025Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","max_reservations_per_slot":18,"preparation_time_minutes":15}
+[2026-04-09T08:11:51.955Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","max_reservations_per_slot":18,"preparation_time_minutes":15}
+[2026-04-09T08:11:54.096Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","max_reservations_per_slot":18,"preparation_time_minutes":15}
+[2026-04-09T08:11:57.511Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","max_reservations_per_slot":18,"preparation_time_minutes":15}
+[2026-04-09T08:12:22.661Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","max_reservations_per_slot":18,"preparation_time_minutes":15}
+[2026-04-09T08:13:55.969Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","max_reservations_per_slot":18,"preparation_time_minutes":15}
+[2026-04-09T08:25:59.210Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","max_reservations_per_slot":20,"preparation_time_minutes":15,"dine_in_time_limit_minutes":90,"grace_period_minutes":10}
+[2026-04-09T08:26:01.219Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","max_reservations_per_slot":20,"preparation_time_minutes":15,"dine_in_time_limit_minutes":89,"grace_period_minutes":10}
+[2026-04-09T09:26:12.734Z] [INFO] Announcement created {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","length":2}
+[2026-04-09T09:26:16.289Z] [INFO] Kitchen note created {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","length":2}
+[2026-04-09T09:26:40.053Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","max_reservations_per_slot":21,"preparation_time_minutes":16,"dine_in_time_limit_minutes":90,"grace_period_minutes":11}
+[2026-04-09T09:27:25.575Z] [INFO] Branch created {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","branch_name":"SamgyupGrill Taft","location":"Taft"}
+[2026-04-09T09:29:39.598Z] [INFO] Menu item created {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","item_name":"Samgyup Couple Set","category":"Samguyp Set","price":1500}

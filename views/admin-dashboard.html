@@ -29,7 +29,7 @@
 
       <div style="margin-top:18px; display:grid; gap:12px;">
 
-        <!-- 1) Announcements (TEXT save + display) -->
+        <!-- 1) Announcements -->
         <div class="card card-pad" style="border-radius:14px;">
           <div style="font-weight:900; margin-bottom:6px;">Post Announcement</div>
           <div class="help">Saved announcements appear below (latest first).</div>
@@ -50,10 +50,10 @@
           <ul id="announceList" style="margin:0; padding-left:18px; opacity:.9;"></ul>
         </div>
 
-        <!-- 2) Kitchen Notes (TEXT save + display) -->
+        <!-- 2) Kitchen Notes -->
         <div class="card card-pad" style="border-radius:14px;">
           <div style="font-weight:900; margin-bottom:6px;">Kitchen Notes</div>
-          <div class="help">Internal notes for staff (demo feature).</div>
+          <div class="help">Internal notes for staff.</div>
 
           <div class="field" style="margin-top:10px;">
             <div class="label">Note</div>
@@ -71,12 +71,12 @@
           <ul id="noteList" style="margin:0; padding-left:18px; opacity:.9;"></ul>
         </div>
 
-        <!-- 3) Store Settings (NUMERIC inputs) -->
+        <!-- 3) Store Settings -->
         <div class="card card-pad" style="border-radius:14px;">
           <div style="font-weight:900; margin-bottom:6px;">Store Settings</div>
-          <div class="help">Numeric controls used by the system (demo feature).</div>
+          <div class="help">Numeric controls used by the system.</div>
 
-          <div class="grid-3" style="grid-template-columns: 1fr 1fr 0.6fr; align-items:end;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:end;">
             <div class="field">
               <div class="label">Max reservations per slot</div>
               <input id="maxRes" class="input" type="number" min="1" max="500" />
@@ -89,11 +89,111 @@
               <div class="help">Example: 15</div>
             </div>
 
-            <div>
-              <button class="btn btn-primary" id="settingsBtn" type="button" style="width:100%;">Save</button>
-              <div class="help" id="settingsStatus" style="margin-top:8px;"></div>
+            <div class="field">
+              <div class="label">Dine-in time limit (minutes)</div>
+              <input id="dineLimit" class="input" type="number" min="30" max="300" />
+              <div class="help">Example: 90</div>
+            </div>
+
+            <div class="field">
+              <div class="label">Grace period (minutes)</div>
+              <input id="graceMin" class="input" type="number" min="1" max="120" />
+              <div class="help">Example: 10</div>
             </div>
           </div>
+
+          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <button class="btn btn-primary" id="settingsBtn" type="button">Save settings</button>
+            <div class="help" id="settingsStatus"></div>
+          </div>
+
+          <div style="height:14px;"></div>
+          <div style="font-weight:900; margin-bottom:6px;">Current saved numeric settings</div>
+          <ul id="settingsDisplay" style="margin:0; padding-left:18px; opacity:.9;"></ul>
+        </div>
+
+        <!-- 4) Branch Management -->
+        <div class="card card-pad" style="border-radius:14px;">
+          <div style="font-weight:900; margin-bottom:6px;">Branch Management</div>
+          <div class="help">Admin can add branches and enable/disable them.</div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px;">
+            <div class="field">
+              <div class="label">Branch name</div>
+              <input id="branchName" class="input" type="text" maxlength="100" placeholder="e.g., SamgyupGrill Taft" />
+            </div>
+
+            <div class="field">
+              <div class="label">Location</div>
+              <input id="branchLocation" class="input" type="text" maxlength="255" placeholder="e.g., Taft Avenue, Manila" />
+            </div>
+
+            <div class="field">
+              <div class="label">Contact number</div>
+              <input id="branchContact" class="input" type="text" maxlength="20" placeholder="e.g., 09171234567" />
+            </div>
+
+            <div class="field">
+              <div class="label">Operating hours</div>
+              <input id="branchHours" class="input" type="text" maxlength="100" placeholder="e.g., 10:00 AM - 10:00 PM" />
+            </div>
+          </div>
+
+          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <button class="btn btn-primary" id="branchSaveBtn" type="button">Add branch</button>
+            <div class="help" id="branchStatus"></div>
+          </div>
+
+          <div style="height:14px;"></div>
+          <div style="font-weight:900; margin-bottom:6px;">Saved branches</div>
+          <div id="branchList" style="display:grid; gap:10px;"></div>
+        </div>
+
+        <!-- 5) Menu Management -->
+        <div class="card card-pad" style="border-radius:14px;">
+          <div style="font-weight:900; margin-bottom:6px;">Menu Management</div>
+          <div class="help">Admin can add menu items and enable/disable them.</div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px;">
+            <div class="field">
+              <div class="label">Item name</div>
+              <input id="menuName" class="input" type="text" maxlength="150" placeholder="e.g., Samgyup Set A" />
+            </div>
+
+            <div class="field">
+              <div class="label">Category</div>
+              <input id="menuCategory" class="input" type="text" maxlength="100" placeholder="e.g., Samgyupsal Set" />
+            </div>
+
+            <div class="field">
+              <div class="label">Price</div>
+              <input id="menuPrice" class="input" type="number" min="1" step="0.01" max="99999.99" placeholder="e.g., 499.00" />
+            </div>
+
+            <div class="field">
+              <div class="label">Description</div>
+              <input id="menuDescription" class="input" type="text" maxlength="2000" placeholder="e.g., Pork, beef, rice, side dishes, drinks" />
+            </div>
+          </div>
+
+          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <button class="btn btn-primary" id="menuSaveBtn" type="button">Add menu item</button>
+            <div class="help" id="menuStatus"></div>
+          </div>
+
+          <div style="height:14px;"></div>
+          <div style="font-weight:900; margin-bottom:6px;">Saved menu items</div>
+          <div id="menuList" style="display:grid; gap:10px;"></div>
+        </div>
+
+        <!-- 6) Reservation Management -->
+        <div class="card card-pad" style="border-radius:14px;">
+          <div style="font-weight:900; margin-bottom:6px;">Reservation Management</div>
+          <div class="help">Admin can review and update reservation status.</div>
+
+          <div style="height:14px;"></div>
+          <div style="font-weight:900; margin-bottom:6px;">Reservations</div>
+          <div id="reservationList" style="display:grid; gap:10px;"></div>
         </div>
 
         <div class="card card-pad" style="border-radius:14px;">
@@ -117,7 +217,6 @@
     const adminInfoEl = document.getElementById("adminInfo");
     const logoutBtn = document.getElementById("logoutBtn");
 
-    // New admin action elements
     const announceText = document.getElementById("announceText");
     const announceBtn = document.getElementById("announceBtn");
     const announceStatus = document.getElementById("announceStatus");
@@ -130,8 +229,29 @@
 
     const maxRes = document.getElementById("maxRes");
     const prepMin = document.getElementById("prepMin");
+    const dineLimit = document.getElementById("dineLimit");
+    const graceMin = document.getElementById("graceMin");
     const settingsBtn = document.getElementById("settingsBtn");
     const settingsStatus = document.getElementById("settingsStatus");
+    const settingsDisplay = document.getElementById("settingsDisplay");
+
+    const branchName = document.getElementById("branchName");
+    const branchLocation = document.getElementById("branchLocation");
+    const branchContact = document.getElementById("branchContact");
+    const branchHours = document.getElementById("branchHours");
+    const branchSaveBtn = document.getElementById("branchSaveBtn");
+    const branchStatus = document.getElementById("branchStatus");
+    const branchList = document.getElementById("branchList");
+
+    const menuName = document.getElementById("menuName");
+    const menuCategory = document.getElementById("menuCategory");
+    const menuPrice = document.getElementById("menuPrice");
+    const menuDescription = document.getElementById("menuDescription");
+    const menuSaveBtn = document.getElementById("menuSaveBtn");
+    const menuStatus = document.getElementById("menuStatus");
+    const menuList = document.getElementById("menuList");
+
+    const reservationList = document.getElementById("reservationList");
 
     let CSRF = "";
 
@@ -154,11 +274,12 @@
     async function loadCsrf() {
       const res = await fetch("/api/admin/csrf", { method: "GET" });
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok || !data.csrfToken) {
-        // if not logged in, redirect
         window.location.href = "/login";
         return;
       }
+
       CSRF = data.csrfToken;
     }
 
@@ -190,6 +311,7 @@
         ul.appendChild(li);
         return;
       }
+
       for (const it of items) {
         const li = document.createElement("li");
         const when = it.created_at ? new Date(it.created_at).toLocaleString() : "";
@@ -209,7 +331,6 @@
       });
     }
 
-    // ---- Announcements ----
     async function loadAnnouncements() {
       const res = await fetch("/api/admin/announcements");
       const data = await res.json().catch(() => ({}));
@@ -220,6 +341,7 @@
     announceBtn.addEventListener("click", async () => {
       announceStatus.textContent = "";
       const message = (announceText.value || "").trim();
+
       if (!message) {
         announceStatus.textContent = "Please enter an announcement.";
         return;
@@ -238,7 +360,6 @@
       await loadAnnouncements();
     });
 
-    // ---- Notes ----
     async function loadNotes() {
       const res = await fetch("/api/admin/notes");
       const data = await res.json().catch(() => ({}));
@@ -249,6 +370,7 @@
     noteBtn.addEventListener("click", async () => {
       noteStatus.textContent = "";
       const note = (noteText.value || "").trim();
+
       if (!note) {
         noteStatus.textContent = "Please enter a note.";
         return;
@@ -267,14 +389,22 @@
       await loadNotes();
     });
 
-    // ---- Settings ----
     async function loadSettings() {
       const res = await fetch("/api/admin/settings");
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.settings) return;
 
-      maxRes.value = data.settings.max_reservations_per_slot;
-      prepMin.value = data.settings.preparation_time_minutes;
+      maxRes.value = data.settings.max_reservations_per_slot ?? "";
+      prepMin.value = data.settings.preparation_time_minutes ?? "";
+      dineLimit.value = data.settings.dine_in_time_limit_minutes ?? "";
+      graceMin.value = data.settings.grace_period_minutes ?? "";
+
+      settingsDisplay.innerHTML = `
+        <li><strong>Max reservations per slot:</strong> ${escapeHtml(data.settings.max_reservations_per_slot)}</li>
+        <li><strong>Preparation time (minutes):</strong> ${escapeHtml(data.settings.preparation_time_minutes)}</li>
+        <li><strong>Dine-in time limit (minutes):</strong> ${escapeHtml(data.settings.dine_in_time_limit_minutes)}</li>
+        <li><strong>Grace period (minutes):</strong> ${escapeHtml(data.settings.grace_period_minutes)}</li>
+      `;
     }
 
     settingsBtn.addEventListener("click", async () => {
@@ -282,7 +412,9 @@
 
       const payload = {
         max_reservations_per_slot: maxRes.value,
-        preparation_time_minutes: prepMin.value
+        preparation_time_minutes: prepMin.value,
+        dine_in_time_limit_minutes: dineLimit.value,
+        grace_period_minutes: graceMin.value
       };
 
       const res = await apiPost("/api/admin/settings", payload);
@@ -297,7 +429,269 @@
       await loadSettings();
     });
 
-    // init (order matters: must load admin, then csrf, then data)
+    async function loadBranches() {
+      const res = await fetch("/api/admin/branches");
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) return;
+
+      branchList.innerHTML = "";
+
+      if (!data.branches || data.branches.length === 0) {
+        branchList.innerHTML = `<div class="help">No branches yet.</div>`;
+        return;
+      }
+
+      for (const branch of data.branches) {
+        const div = document.createElement("div");
+        div.className = "card card-pad";
+        div.style.borderRadius = "12px";
+
+        div.innerHTML = `
+          <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center;">
+            <div>
+              <div style="font-weight:900;">${escapeHtml(branch.name)}</div>
+              <div class="help">${escapeHtml(branch.location)}</div>
+              <div class="help">Contact: ${escapeHtml(branch.contact_number)}</div>
+              <div class="help">Hours: ${escapeHtml(branch.operating_hours)}</div>
+              <div class="help">
+                Status:
+                <strong>${branch.is_active ? "Active" : "Inactive"}</strong>
+              </div>
+            </div>
+            <div>
+              <button class="btn btn-ghost" type="button" data-branch-id="${branch.id}">
+                ${branch.is_active ? "Disable" : "Enable"}
+              </button>
+            </div>
+          </div>
+        `;
+
+        const btn = div.querySelector("button[data-branch-id]");
+        btn.addEventListener("click", async () => {
+          const branchId = btn.getAttribute("data-branch-id");
+
+          const res = await apiPost(`/api/admin/branches/${branchId}/toggle`, {});
+          const data = await res.json().catch(() => ({}));
+
+          if (!res.ok) {
+            branchStatus.textContent = data.error || "Failed to update branch status.";
+            return;
+          }
+
+          branchStatus.textContent = data.message || "Branch updated.";
+          await loadBranches();
+        });
+
+        branchList.appendChild(div);
+      }
+    }
+
+    branchSaveBtn.addEventListener("click", async () => {
+      branchStatus.textContent = "";
+
+      const payload = {
+        name: branchName.value,
+        location: branchLocation.value,
+        contact_number: branchContact.value,
+        operating_hours: branchHours.value
+      };
+
+      const res = await apiPost("/api/admin/branches", payload);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        branchStatus.textContent = data.error || "Failed to add branch.";
+        return;
+      }
+
+      branchName.value = "";
+      branchLocation.value = "";
+      branchContact.value = "";
+      branchHours.value = "";
+
+      branchStatus.textContent = "Branch added successfully.";
+      await loadBranches();
+    });
+
+    async function loadMenuItems() {
+      const res = await fetch("/api/admin/menu-items");
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) return;
+
+      menuList.innerHTML = "";
+
+      if (!data.menuItems || data.menuItems.length === 0) {
+        menuList.innerHTML = `<div class="help">No menu items yet.</div>`;
+        return;
+      }
+
+      for (const item of data.menuItems) {
+        const div = document.createElement("div");
+        div.className = "card card-pad";
+        div.style.borderRadius = "12px";
+
+        div.innerHTML = `
+          <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center;">
+            <div>
+              <div style="font-weight:900;">${escapeHtml(item.name)}</div>
+              <div class="help">Category: ${escapeHtml(item.category)}</div>
+              <div class="help">Price: ₱${escapeHtml(Number(item.price).toFixed(2))}</div>
+              <div class="help">Description: ${escapeHtml(item.description || "")}</div>
+              <div class="help">
+                Status:
+                <strong>${item.is_available ? "Available" : "Unavailable"}</strong>
+              </div>
+            </div>
+            <div>
+              <button class="btn btn-ghost" type="button" data-menu-id="${item.id}">
+                ${item.is_available ? "Disable" : "Enable"}
+              </button>
+            </div>
+          </div>
+        `;
+
+        const btn = div.querySelector("button[data-menu-id]");
+        btn.addEventListener("click", async () => {
+          const itemId = btn.getAttribute("data-menu-id");
+
+          const res = await apiPost(`/api/admin/menu-items/${itemId}/toggle`, {});
+          const data = await res.json().catch(() => ({}));
+
+          if (!res.ok) {
+            menuStatus.textContent = data.error || "Failed to update menu item status.";
+            return;
+          }
+
+          menuStatus.textContent = data.message || "Menu item updated.";
+          await loadMenuItems();
+        });
+
+        menuList.appendChild(div);
+      }
+    }
+
+    menuSaveBtn.addEventListener("click", async () => {
+      menuStatus.textContent = "";
+
+      const payload = {
+        name: menuName.value,
+        category: menuCategory.value,
+        price: menuPrice.value,
+        description: menuDescription.value
+      };
+
+      const res = await apiPost("/api/admin/menu-items", payload);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        menuStatus.textContent = data.error || "Failed to add menu item.";
+        return;
+      }
+
+      menuName.value = "";
+      menuCategory.value = "";
+      menuPrice.value = "";
+      menuDescription.value = "";
+
+      menuStatus.textContent = "Menu item added successfully.";
+      await loadMenuItems();
+    });
+
+    function prettyStatus(status) {
+      switch (status) {
+        case "pending": return "Pending";
+        case "approved": return "Approved";
+        case "rejected": return "Rejected";
+        case "completed": return "Completed";
+        case "no_show": return "No Show";
+        case "cancelled": return "Cancelled";
+        default: return status || "Unknown";
+      }
+    }
+
+    async function updateReservationStatus(reservationId, status, adminNotes = "") {
+      const res = await apiPost(`/api/admin/reservations/${reservationId}/status`, {
+        status,
+        admin_notes: adminNotes
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update reservation.");
+      }
+
+      return data;
+    }
+
+    async function loadReservations() {
+      const res = await fetch("/api/admin/reservations");
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) return;
+
+      reservationList.innerHTML = "";
+
+      if (!data.reservations || data.reservations.length === 0) {
+        reservationList.innerHTML = `<div class="help">No reservations yet.</div>`;
+        return;
+      }
+
+      for (const r of data.reservations) {
+        const div = document.createElement("div");
+        div.className = "card card-pad";
+        div.style.borderRadius = "12px";
+
+        const dateText = r.reservation_date ? new Date(r.reservation_date).toLocaleDateString() : "";
+        const branchText = r.branch_name ? r.branch_name : "No branch assigned";
+
+        div.innerHTML = `
+          <div style="display:grid; gap:10px;">
+            <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+              <div>
+                <div style="font-weight:900;">${escapeHtml(r.full_name)}</div>
+                <div class="help">Email: ${escapeHtml(r.email || "")}</div>
+                <div class="help">Phone: ${escapeHtml(r.phone || "")}</div>
+                <div class="help">Date: ${escapeHtml(dateText)} | Time: ${escapeHtml(r.reservation_time || "")}</div>
+                <div class="help">Guests: ${escapeHtml(String(r.guests_count ?? ""))}</div>
+                <div class="help">Branch: ${escapeHtml(branchText)}</div>
+                <div class="help">Status: <strong>${escapeHtml(prettyStatus(r.status))}</strong></div>
+                <div class="help">Admin notes: ${escapeHtml(r.admin_notes || "-")}</div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-ghost" type="button" data-action="approved" data-id="${r.id}">Approve</button>
+              <button class="btn btn-ghost" type="button" data-action="rejected" data-id="${r.id}">Reject</button>
+              <button class="btn btn-ghost" type="button" data-action="completed" data-id="${r.id}">Complete</button>
+              <button class="btn btn-ghost" type="button" data-action="no_show" data-id="${r.id}">No Show</button>
+              <button class="btn btn-ghost" type="button" data-action="cancelled" data-id="${r.id}">Cancel</button>
+            </div>
+          </div>
+        `;
+
+        const buttons = div.querySelectorAll("button[data-action]");
+        buttons.forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const status = btn.getAttribute("data-action");
+            const id = btn.getAttribute("data-id");
+            const note = prompt(`Optional admin note for ${prettyStatus(status)}:`, "") || "";
+
+            try {
+              await updateReservationStatus(id, status, note);
+              await loadReservations();
+            } catch (err) {
+              alert(err.message || "Failed to update reservation.");
+            }
+          });
+        });
+
+        reservationList.appendChild(div);
+      }
+    }
+
     (async function init() {
       try {
         await loadAdmin();
@@ -305,6 +699,9 @@
         await loadAnnouncements();
         await loadNotes();
         await loadSettings();
+        await loadBranches();
+        await loadMenuItems();
+        await loadReservations();
       } catch (e) {
         window.location.href = "/login";
       }

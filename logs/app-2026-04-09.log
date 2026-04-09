@@ -1,0 +1,4 @@
+{"ts":"2026-04-09T07:22:30.355Z","event":"register.success","email":"joash_nas@dlsu.edu.ph","ip":"::1","photo_path":"/public/uploads/1775719348218_f82ed7178d189e7db82a28c0ffb84125.jpg"}
+{"ts":"2026-04-09T07:22:53.874Z","event":"register.email_sent","email":"joash_nas@dlsu.edu.ph","ip":"::1"}
+{"ts":"2026-04-09T07:33:49.181Z","event":"verify_email.success","email":"joash_nas@dlsu.edu.ph","ip":"::1","user_id":1}
+{"ts":"2026-04-09T07:35:14.776Z","event":"app.error","ip":"::1","method":"POST","path":"/api/admin/logout","message":"Cannot read properties of undefined (reading 'csrf_token')"}
