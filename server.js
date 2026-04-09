@@ -92,6 +92,41 @@ if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
 
+// --- Syslog setup ---
+const syslog = require("syslog-client");
+let syslogClient = null;
+if (process.env.SYSLOG_HOST) {
+  syslogClient = syslog.createClient(process.env.SYSLOG_HOST, {
+    port: Number(process.env.SYSLOG_PORT) || 514,
+    transport:
+      (process.env.SYSLOG_PROTOCOL || "udp").toLowerCase() === "tcp"
+        ? syslog.Transport.Tcp
+        : syslog.Transport.Udp,
+    facility: Number(process.env.SYSLOG_FACILITY) || syslog.Facility.Local0,
+    appName: process.env.SYSLOG_APP_NAME || "itsecwb",
+  });
+  console.log(`[SYSLOG] Forwarding to ${process.env.SYSLOG_HOST}:${process.env.SYSLOG_PORT || 514}`);
+}
+
+function sendSyslog(severity, message) {
+  if (!syslogClient) return;
+  syslogClient.log(message, { severity }, (err) => {
+    if (err) console.error("[SYSLOG] forward failed:", err.message);
+  });
+}
+
+function sendLoggly(message) {
+  if (!process.env.LOGGLY_URL || !process.env.LOGGLY_TOKEN) return;
+  fetchFn(process.env.LOGGLY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Authorization": `Bearer ${process.env.LOGGLY_TOKEN}`,
+    },
+    body: message,
+  }).catch((err) => console.error("[LOGGLY] forward failed:", err.message));
+}
+
 function audit(event, details = {}) {
   const safe = { ...details };
 
@@ -102,18 +137,32 @@ function audit(event, details = {}) {
   delete safe.password_hash;
   delete safe.verify_token_hash;
 
-  const filename = path.join(logsDir, `app-${new Date().toISOString().slice(0, 10)}.log`);
-  const line = JSON.stringify({
-    ts: new Date().toISOString(),
-    event,
-    ...safe,
-  }) + "\n";
+  const ts = new Date().toISOString();
 
+  // 1. File
+  const filename = path.join(logsDir, `app-${ts.slice(0, 10)}.log`);
+  const line = JSON.stringify({ ts, event, ...safe }) + "\n";
   fs.appendFile(filename, line, (err) => {
-    if (err) {
-      console.error("[AUDIT] write failed:", err.message);
-    }
+    if (err) console.error("[AUDIT] write failed:", err.message);
   });
+
+  // 2. DB
+  pool.execute(
+    "INSERT INTO audit_logs (ts, event, user_id, email, ip, details) VALUES (?, ?, ?, ?, ?, ?)",
+    [
+      new Date(),
+      event,
+      safe.userId ?? safe.user_id ?? null,
+      safe.email ?? null,
+      safe.ip ?? null,
+      JSON.stringify(safe),
+    ]
+  ).catch((err) => console.error("[AUDIT] db insert failed:", err.message));
+
+  // 3. Syslog + Loggly
+  const auditMsg = `AUDIT ${event} ${JSON.stringify(safe)}`;
+  sendSyslog(syslog.Severity.Informational, auditMsg);
+  sendLoggly(auditMsg);
 }
 
 function ensureLogDir() {
@@ -123,13 +172,37 @@ function ensureLogDir() {
 }
 
 function adminLog(level, message, context = {}) {
+  const ts = new Date().toISOString();
+
+  // 1. File
   try {
     const logDir = ensureLogDir();
-    const ts = new Date().toISOString();
     const file = path.join(logDir, `admin_${ts.slice(0, 10)}.log`);
     const line = `[${ts}] [${level}] ${message} ${JSON.stringify(context)}\n`;
     fs.appendFileSync(file, line);
   } catch (_) {}
+
+  // 2. DB
+  pool.execute(
+    "INSERT INTO audit_logs (ts, event, user_id, email, ip, details) VALUES (?, ?, ?, ?, ?, ?)",
+    [
+      new Date(),
+      `admin.${level.toLowerCase()}`,
+      context.userId ?? context.user_id ?? null,
+      context.email ?? context.adminEmail ?? null,
+      context.ip ?? null,
+      JSON.stringify({ message, ...context }),
+    ]
+  ).catch((err) => console.error("[ADMIN_LOG] db insert failed:", err.message));
+
+  // 3. Syslog + Loggly
+  const severity =
+    level === "ERROR" ? syslog.Severity.Error
+    : level === "WARN"  ? syslog.Severity.Warning
+    : syslog.Severity.Informational;
+  const adminMsg = `ADMIN [${level}] ${message} ${JSON.stringify(context)}`;
+  sendSyslog(severity, adminMsg);
+  sendLoggly(adminMsg);
 }
 
 function sendDebugOrGenericError(res, err, genericMessage = "Server error", status = 500) {

@@ -19,3 +19,8 @@
 [2026-04-09T09:31:10.241Z] [INFO] Kitchen note created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":4,"preview":"Test"}
 [2026-04-09T09:31:15.710Z] [INFO] Announcement created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":4,"preview":"test"}
 [2026-04-09T09:31:18.130Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","max_reservations_per_slot":20,"preparation_time_minutes":15}
+[2026-04-09T13:36:28.284Z] [INFO] Announcement created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":1,"preview":"4"}
+[2026-04-09T13:40:39.438Z] [INFO] Announcement created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":10,"preview":"Mysql test"}
+[2026-04-09T13:41:45.092Z] [INFO] Kitchen note created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":11,"preview":"Syslog test"}
+[2026-04-09T13:45:08.735Z] [INFO] Announcement created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":15,"preview":"syslogging test"}
+[2026-04-09T13:56:01.458Z] [INFO] Announcement created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":10,"preview":"papertrail"}
