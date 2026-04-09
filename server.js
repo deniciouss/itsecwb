@@ -1210,10 +1210,29 @@ app.get("/api/admin/branches", requireAdmin, async (req, res) => {
 
 app.post("/api/admin/branches", requireAdmin, async (req, res) => {
   try {
-    const name = String(req.body.name || "").trim();
-    const location = String(req.body.location || "").trim();
-    const contact_number = String(req.body.contact_number || "").trim();
-    const operating_hours = String(req.body.operating_hours || "").trim();
+    const name = validatePlainTextField("branch_name", String(req.body.name || ""), {
+      min: 1,
+      max: 100,
+      allowEmpty: false,
+    });
+
+    const location = validatePlainTextField("branch_location", String(req.body.location || ""), {
+      min: 1,
+      max: 255,
+      allowEmpty: false,
+    });
+
+    const contact_number = validatePlainTextField("branch_contact_number", String(req.body.contact_number || ""), {
+      min: 1,
+      max: 20,
+      allowEmpty: false,
+    });
+
+    const operating_hours = validatePlainTextField("branch_operating_hours", String(req.body.operating_hours || ""), {
+      min: 1,
+      max: 100,
+      allowEmpty: false,
+    });
 
     if (!name || !location || !contact_number || !operating_hours) {
       return res.status(400).json({ error: "All branch fields are required" });
@@ -1250,6 +1269,14 @@ app.post("/api/admin/branches", requireAdmin, async (req, res) => {
 
     return res.json({ message: "Branch added successfully" });
   } catch (err) {
+    if (err instanceof UserInputError) {
+      adminLog("WARN", "Blocked malicious branch input", {
+        ip: req.ip,
+        adminEmail: req.session?.admin?.email,
+        message: err.message,
+      });
+      return sendUserInputError(res, err);
+    }
     console.error("[ADMIN] branch create error:", err);
     return sendAdminApiError(res, err, "Server error", 500);
   }
@@ -1800,21 +1827,7 @@ app.post("/register", registerLimiter, registerUpload, async (req, res) => {
       return res.redirect("/register?error=1");
     }
 
-    if (err instanceof UserInputError) {
-      audit("register.failed", {
-        email: req.body?.email ? String(req.body.email).trim().toLowerCase() : undefined,
-        ip: req.ip,
-        reason: err.message,
-      });
-
-      safeUnlink(uploadedFilePath);
-
-      if (DEBUG_ERRORS) {
-        return sendDebugOrGenericError(res, err, "Invalid input.", 400);
-      }
-
-      return res.redirect("/register?error=1");
-    }
+    
 
     if (password !== confirm_password) {
       safeUnlink(uploadedFilePath);
@@ -1911,6 +1924,21 @@ app.post("/register", registerLimiter, registerUpload, async (req, res) => {
       return res.redirect("/login?verify=0");
     }
   } catch (err) {
+    if (err instanceof UserInputError) {
+      audit("register.failed", {
+        email: req.body?.email ? String(req.body.email).trim().toLowerCase() : undefined,
+        ip: req.ip,
+        reason: err.message,
+      });
+
+      safeUnlink(uploadedFilePath);
+
+      if (DEBUG_ERRORS) {
+        return sendDebugOrGenericError(res, err, "Invalid input.", 400);
+      }
+
+      return res.redirect("/register?error=1");
+    }
     safeUnlink(uploadedFilePath);
 
     audit("register.error", {
