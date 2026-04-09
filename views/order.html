@@ -47,9 +47,10 @@
           <input
             class="input"
             id="quantity"
-            type="number"
-            min="1"
-            max="10"
+            type="text"
+            inputmode="numeric"
+            maxlength="2"
+            autocomplete="off"
             required
           />
           <div class="help">Minimum 1, maximum 10.</div>
@@ -82,6 +83,7 @@
     const editingOrderIdEl = document.getElementById("editingOrderId");
     const saveBtn = document.getElementById("saveBtn");
     const cancelEditBtn = document.getElementById("cancelEditBtn");
+    const quantityInput = document.getElementById("quantity");
 
     const menuItemsById = new Map();
     const orderRowsById = new Map();
@@ -211,12 +213,44 @@
 
     function startEdit(order) {
       editingOrderIdEl.value = order.id;
-      document.getElementById("quantity").value = order.quantity;
-      document.getElementById("menu_item_id").value = findMenuItemIdByName(order.order_text);
+      quantityInput.value = String(order.quantity || "");
+      menuItemSelect.value = findMenuItemIdByName(order.order_text);
       saveBtn.textContent = "Update Order";
       showMessage("Editing saved order.");
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
+
+    quantityInput.addEventListener("input", () => {
+  let clean = quantityInput.value.replace(/\D/g, "");
+  if (clean.length > 2) clean = clean.slice(0, 2);
+  quantityInput.value = clean;
+
+  if (clean !== "" && Number(clean) > 10) {
+    showError("Please enter a quantity lower than 11.");
+  } else {
+    orderError.style.display = "none";
+  }
+});
+
+quantityInput.addEventListener("paste", (e) => {
+  e.preventDefault();
+  const pasted = (e.clipboardData || window.clipboardData).getData("text");
+  let clean = String(pasted || "").replace(/\D/g, "");
+  if (clean.length > 2) clean = clean.slice(0, 2);
+  quantityInput.value = clean;
+
+  if (clean !== "" && Number(clean) > 10) {
+    showError("Please enter a quantity lower than 11.");
+  } else {
+    orderError.style.display = "none";
+  }
+});
+
+    quantityInput.addEventListener("keydown", (e) => {
+      const allowed = ["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Home", "End"];
+      if (allowed.includes(e.key) || /^\d$/.test(e.key)) return;
+      e.preventDefault();
+    });
 
     orderList.addEventListener("click", async (e) => {
       const btn = e.target.closest("button[data-action]");
@@ -255,9 +289,34 @@
       e.preventDefault();
 
       const editingOrderId = editingOrderIdEl.value;
+      const selectedMenuItemId = menuItemSelect.value.trim();
+      const quantityValue = quantityInput.value.trim();
+
+      if (!/^\d+$/.test(selectedMenuItemId)) {
+        showError("Please select a valid menu item.");
+        return;
+      }
+
+      if (!/^\d+$/.test(quantityValue)) {
+        showError("Quantity must contain digits only.");
+        return;
+      }
+
+      const quantityNumber = Number(quantityValue);
+
+      if (!Number.isInteger(quantityNumber) || quantityNumber < 1) {
+        showError("Please enter a valid quantity.");
+        return;
+        }
+
+        if (quantityNumber > 10) {
+        showError("Please enter a quantity lower than 11.");
+        return;
+        }
+
       const payload = {
-        menu_item_id: Number(document.getElementById("menu_item_id").value),
-        quantity: Number(document.getElementById("quantity").value)
+        menu_item_id: selectedMenuItemId,
+        quantity: quantityValue
       };
 
       const url = editingOrderId
@@ -294,6 +353,7 @@
     (async function init() {
       await loadMenuItems();
       await loadReservationDetails();
+      resetForm();
     })();
   </script>
 </body>

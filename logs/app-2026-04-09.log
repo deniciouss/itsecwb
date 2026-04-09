@@ -45,3 +45,9 @@
 {"ts":"2026-04-09T13:10:47.588Z","event":"reservation.order.create","ip":"::1","user_id":1,"email":"jianna_loyola@dlsu.edu.ph","reservation_id":2,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":3}
 {"ts":"2026-04-09T13:11:01.518Z","event":"reservation.order.edit","ip":"::1","user_id":1,"email":"jianna_loyola@dlsu.edu.ph","order_id":1,"reservation_id":2,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":5}
 {"ts":"2026-04-09T15:27:00.451Z","event":"auth.login.success","ip":"::1","email":"jianna_loyola@dlsu.edu.ph","user_id":1,"role":"customer"}
+{"ts":"2026-04-09T16:06:33.959Z","event":"auth.login.success","ip":"::1","email":"fakehh24@gmail.com","user_id":17,"role":"customer"}
+{"ts":"2026-04-09T16:36:47.714Z","event":"auth.login.success","ip":"::1","email":"fakehh24@gmail.com","user_id":17,"role":"customer"}
+{"ts":"2026-04-09T16:37:37.200Z","event":"reservation.order.create","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","reservation_id":1,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":10}
+{"ts":"2026-04-09T16:39:14.009Z","event":"reservation.order.delete","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","order_id":3,"reservation_id":1,"order_text":"Iced Tea Pitcher","quantity":10}
+{"ts":"2026-04-09T16:50:21.464Z","event":"reservation.order.create","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","reservation_id":1,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":2}
+{"ts":"2026-04-09T16:50:30.395Z","event":"reservation.order.edit","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","order_id":4,"reservation_id":1,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":1}

@@ -527,6 +527,78 @@ function containsScriptLikeInput(value) {
   return /<\s*\/?\s*script\b|javascript\s*:|vbscript\s*:|data\s*:\s*text\/html|on[a-z]+\s*=|<\s*img\b|<\s*svg\b|<\s*iframe\b|<\s*object\b|<\s*embed\b|&#x?0*3c;|%3c|%3e/i.test(s);
 }
 
+// Strict blocker for script-like payloads.
+// This is intentionally strict for school/demo security.
+function containsScriptLikeInput(value) {
+  const s = String(value || "");
+
+  return /<\s*\/?\s*script\b|javascript\s*:|vbscript\s*:|data\s*:\s*text\/html|on[a-z]+\s*=|<\s*img\b|<\s*svg\b|<\s*iframe\b|<\s*object\b|<\s*embed\b|&#x?0*3c;|%3c|%3e/i.test(s);
+}
+
+function validateStrictNumericField(fieldName, value, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const raw = String(value ?? "").trim();
+
+  if (!raw) {
+    throwInputError(`${fieldName} is required`);
+  }
+
+  if (containsScriptLikeInput(raw)) {
+    throwInputError(`${fieldName} contains blocked script-like content`);
+  }
+
+  if (!/^\d+$/.test(raw)) {
+    throwInputError(`${fieldName} must contain digits only`);
+  }
+
+  const num = Number(raw);
+
+  if (!Number.isInteger(num)) {
+    throwInputError(`${fieldName} must be an integer`);
+  }
+
+  if (num < min || num > max) {
+    throwInputError(`${fieldName} must be between ${min} and ${max}`);
+  }
+
+  return num;
+}
+
+function validateStrictIdField(fieldName, value) {
+  return validateStrictNumericField(fieldName, value, { min: 1, max: 999999999 });
+}
+
+function validatePlainTextField(fieldName, value, opts = {}) {
+  const {
+    min = 0,
+    max = 300,
+    allowEmpty = true,
+  } = opts;
+
+  if (typeof value !== "string") {
+    throwInputError(`${fieldName} must be a string`);
+  }
+
+  const clean = value.trim().replace(/\s+/g, " ");
+
+  if (!allowEmpty && !clean) {
+    throwInputError(`${fieldName} is required`);
+  }
+
+  if (clean.length < min) {
+    throwInputError(`${fieldName} is too short`);
+  }
+
+  if (clean.length > max) {
+    throwInputError(`${fieldName} is too long`);
+  }
+
+  if (containsScriptLikeInput(clean)) {
+    throwInputError(`${fieldName} contains blocked script-like content`);
+  }
+
+  return clean;
+}
+
 function validatePlainTextField(fieldName, value, opts = {}) {
   const {
     min = 0,
@@ -2744,21 +2816,9 @@ app.get("/api/reservations/:id/orders", requireUserApi, async (req, res) => {
 
 app.post("/api/reservations/:id/orders", requireUserApi, async (req, res) => {
   try {
-    const reservationId = Number(req.params.id);
-    const menuItemId = Number(req.body.menu_item_id);
-    const quantity = Number(req.body.quantity);
-
-    if (!Number.isInteger(reservationId) || reservationId <= 0) {
-      return res.status(400).json({ error: "Invalid reservation id" });
-    }
-
-    if (!Number.isInteger(menuItemId) || menuItemId <= 0) {
-      return res.status(400).json({ error: "Please select a menu item" });
-    }
-
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) {
-      return res.status(400).json({ error: "Quantity must be from 1 to 10 only" });
-    }
+    const reservationId = validateStrictIdField("reservation_id", req.params.id);
+    const menuItemId = validateStrictIdField("menu_item_id", req.body.menu_item_id);
+    const quantity = validateStrictNumericField("quantity", req.body.quantity, { min: 1, max: 10 });
 
     const [reservationRows] = await pool.execute(
       `SELECT id, user_id, status
@@ -2816,6 +2876,16 @@ app.post("/api/reservations/:id/orders", requireUserApi, async (req, res) => {
 
     return res.json({ message: "Order saved successfully" });
   } catch (err) {
+    if (err instanceof UserInputError) {
+      audit("reservation.order.create.blocked_input", {
+        ip: req.ip,
+        user_id: req.session.user.user_id,
+        reservation_id: req.params.id,
+        message: err.message,
+      });
+      return sendUserInputError(res, err);
+    }
+
     audit("reservation.order.create.error", {
       ip: req.ip,
       user_id: req.session.user.user_id,
@@ -2828,21 +2898,9 @@ app.post("/api/reservations/:id/orders", requireUserApi, async (req, res) => {
 
 app.post("/api/orders/:orderId/edit", requireUserApi, async (req, res) => {
   try {
-    const orderId = Number(req.params.orderId);
-    const menuItemId = Number(req.body.menu_item_id);
-    const quantity = Number(req.body.quantity);
-
-    if (!Number.isInteger(orderId) || orderId <= 0) {
-      return res.status(400).json({ error: "Invalid order id" });
-    }
-
-    if (!Number.isInteger(menuItemId) || menuItemId <= 0) {
-      return res.status(400).json({ error: "Please select a menu item" });
-    }
-
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) {
-      return res.status(400).json({ error: "Quantity must be from 1 to 10 only" });
-    }
+    const orderId = validateStrictIdField("order_id", req.params.orderId);
+    const menuItemId = validateStrictIdField("menu_item_id", req.body.menu_item_id);
+    const quantity = validateStrictNumericField("quantity", req.body.quantity, { min: 1, max: 10 });
 
     const [orderRows] = await pool.execute(
       `SELECT ro.id, ro.user_id, ro.reservation_id, r.status
@@ -2903,6 +2961,16 @@ app.post("/api/orders/:orderId/edit", requireUserApi, async (req, res) => {
 
     return res.json({ message: "Order updated successfully" });
   } catch (err) {
+    if (err instanceof UserInputError) {
+      audit("reservation.order.edit.blocked_input", {
+        ip: req.ip,
+        user_id: req.session.user.user_id,
+        order_id: req.params.orderId,
+        message: err.message,
+      });
+      return sendUserInputError(res, err);
+    }
+
     audit("reservation.order.edit.error", {
       ip: req.ip,
       user_id: req.session.user.user_id,
@@ -2915,11 +2983,7 @@ app.post("/api/orders/:orderId/edit", requireUserApi, async (req, res) => {
 
 app.post("/api/orders/:orderId/delete", requireUserApi, async (req, res) => {
   try {
-    const orderId = Number(req.params.orderId);
-
-    if (!Number.isInteger(orderId) || orderId <= 0) {
-      return res.status(400).json({ error: "Invalid order id" });
-    }
+    const orderId = validateStrictIdField("order_id", req.params.orderId);
 
     const [rows] = await pool.execute(
       `SELECT id, reservation_id, order_text, quantity
@@ -2955,6 +3019,16 @@ app.post("/api/orders/:orderId/delete", requireUserApi, async (req, res) => {
 
     return res.json({ message: "Order deleted successfully" });
   } catch (err) {
+    if (err instanceof UserInputError) {
+      audit("reservation.order.delete.blocked_input", {
+        ip: req.ip,
+        user_id: req.session.user.user_id,
+        order_id: req.params.orderId,
+        message: err.message,
+      });
+      return sendUserInputError(res, err);
+    }
+
     audit("reservation.order.delete.error", {
       ip: req.ip,
       user_id: req.session.user.user_id,
