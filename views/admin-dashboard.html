@@ -189,6 +189,48 @@
           <div id="menuList" style="display:grid; gap:10px;"></div>
         </div>
 
+        <!-- 6) Reservation Management -->
+          <div class="card card-pad" style="border-radius:14px;">
+            <div style="font-weight:900; margin-bottom:6px;">Reservation Management</div>
+            <div class="help">Admin can review, filter, and update reservation status.</div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:12px; margin-top:12px; align-items:end;">
+              <div class="field">
+                <div class="label">Filter by date</div>
+                <input id="filterReservationDate" class="input" type="date" />
+              </div>
+
+              <div class="field">
+                <div class="label">Filter by branch</div>
+                <select id="filterReservationBranch" class="input">
+                  <option value="">All branches</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <div class="label">Filter by status</div>
+                <select id="filterReservationStatus" class="input">
+                  <option value="">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="completed">Completed</option>
+                  <option value="no_show">No Show</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-primary" id="applyReservationFiltersBtn" type="button">Apply</button>
+                <button class="btn btn-ghost" id="clearReservationFiltersBtn" type="button">Clear</button>
+              </div>
+            </div>
+
+            <div style="height:14px;"></div>
+            <div style="font-weight:900; margin-bottom:6px;">Reservations</div>
+            <div id="reservationList" style="display:grid; gap:10px;"></div>
+          </div>
+
         <div class="card card-pad" style="border-radius:14px;">
           <div style="font-weight:900; margin-bottom:6px;">Security Notes</div>
           <ul style="margin:0; padding-left:18px; opacity:.85;">
@@ -244,6 +286,13 @@
     const menuSaveBtn = document.getElementById("menuSaveBtn");
     const menuStatus = document.getElementById("menuStatus");
     const menuList = document.getElementById("menuList");
+
+    const reservationList = document.getElementById("reservationList");
+    const filterReservationDate = document.getElementById("filterReservationDate");
+    const filterReservationBranch = document.getElementById("filterReservationBranch");
+    const filterReservationStatus = document.getElementById("filterReservationStatus");
+    const applyReservationFiltersBtn = document.getElementById("applyReservationFiltersBtn");
+    const clearReservationFiltersBtn = document.getElementById("clearReservationFiltersBtn");
 
     let CSRF = "";
 
@@ -628,19 +677,162 @@
       await loadMenuItems();
     });
 
-    (async function init() {
-      try {
-        await loadAdmin();
-        await loadCsrf();
-        await loadAnnouncements();
-        await loadNotes();
-        await loadSettings();
-        await loadBranches();
-        await loadMenuItems();
-      } catch (e) {
-        window.location.href = "/login";
+    async function loadReservations() {
+      const params = new URLSearchParams();
+
+      if (filterReservationDate.value) {
+        params.set("date", filterReservationDate.value);
       }
-    })();
+
+      if (filterReservationBranch.value) {
+        params.set("branch_id", filterReservationBranch.value);
+      }
+
+      if (filterReservationStatus.value) {
+        params.set("status", filterReservationStatus.value);
+      }
+
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      const { res, data } = await apiGet(`/api/admin/reservations${qs}`);
+
+      if (!res.ok) {
+        showApiError(data, "Load Failed", "Failed to load reservations.");
+        return;
+      }
+
+      reservationList.innerHTML = "";
+
+      if (!data.reservations || data.reservations.length === 0) {
+        reservationList.innerHTML = `<div class="help">No reservations found.</div>`;
+        return;
+      }
+
+      for (const r of data.reservations) {
+        const div = document.createElement("div");
+        div.className = "card card-pad";
+        div.style.borderRadius = "12px";
+
+        div.innerHTML = `
+          <div style="display:grid; gap:10px;">
+            <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+              <div>
+                <div style="font-weight:900;">${escapeHtml(r.full_name || "Unknown Customer")}</div>
+                <div class="help">Email: ${escapeHtml(r.email || "")}</div>
+                <div class="help">Phone: ${escapeHtml(r.phone || "")}</div>
+                <div class="help">Branch: ${escapeHtml(r.branch_name || "No branch assigned")}</div>
+                <div class="help">Date: ${escapeHtml(formatDateOnly(r.reservation_date))}</div>
+                <div class="help">Time: ${escapeHtml(formatTimeOnly(r.reservation_time))}</div>
+                <div class="help">Guests: ${escapeHtml(String(r.guests_count ?? ""))}</div>
+                <div class="help">Tables Needed: ${escapeHtml(String(r.tables_needed ?? ""))}</div>
+                <div class="help">Assigned Tables: ${escapeHtml(r.assigned_tables || "-")}</div>
+                <div class="help">Reservation Note: ${escapeHtml(r.reservation_note || "-")}</div>
+                <div class="help">Admin Notes: ${escapeHtml(r.admin_notes || "-")}</div>
+                <div class="help">Status: <strong>${escapeHtml(prettyStatus(r.status))}</strong></div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-ghost" type="button" data-action="approved" data-id="${r.id}">Approve</button>
+              <button class="btn btn-ghost" type="button" data-action="rejected" data-id="${r.id}">Reject</button>
+              <button class="btn btn-ghost" type="button" data-action="completed" data-id="${r.id}">Complete</button>
+              <button class="btn btn-ghost" type="button" data-action="no_show" data-id="${r.id}">No Show</button>
+              <button class="btn btn-ghost" type="button" data-action="cancelled" data-id="${r.id}">Cancel</button>
+            </div>
+          </div>
+        `;
+
+        const buttons = div.querySelectorAll("button[data-action]");
+        buttons.forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const status = btn.getAttribute("data-action");
+            const id = btn.getAttribute("data-id");
+            const note = prompt(`Optional admin note for ${prettyStatus(status)}:`, "") || "";
+
+            const { res, data } = await apiPost(`/api/admin/reservations/${id}/status`, {
+              status,
+              admin_notes: note
+            });
+
+            if (!res.ok) {
+              showApiError(data, "Update Failed", "Failed to update reservation.");
+              return;
+            }
+
+            showToast("Reservation Updated", `Reservation marked as ${prettyStatus(status)}.`);
+            await loadReservations();
+          });
+        });
+
+        reservationList.appendChild(div);
+      }
+    }
+
+    async function loadReservationBranchFilter() {
+      const { res, data } = await apiGet("/api/admin/branches");
+
+      if (!res.ok) {
+        showApiError(data, "Load Failed", "Failed to load branches for reservation filter.");
+        return;
+      }
+
+      filterReservationBranch.innerHTML = `<option value="">All branches</option>`;
+
+      for (const branch of data.branches || []) {
+        const option = document.createElement("option");
+        option.value = branch.id;
+        option.textContent = branch.name;
+        filterReservationBranch.appendChild(option);
+      }
+    }
+
+    function prettyStatus(status) {
+      switch (String(status || "").toLowerCase()) {
+        case "pending": return "Pending";
+        case "approved": return "Approved";
+        case "rejected": return "Rejected";
+        case "completed": return "Completed";
+        case "no_show": return "No Show";
+        case "cancelled": return "Cancelled";
+        default: return status || "Unknown";
+      }
+    }
+
+    function formatDateOnly(value) {
+      if (!value) return "";
+      return String(value).slice(0, 10);
+    }
+
+    function formatTimeOnly(value) {
+      if (!value) return "";
+      return String(value).slice(0, 5);
+    }
+
+    applyReservationFiltersBtn.addEventListener("click", async () => {
+      await loadReservations();
+    });
+
+    clearReservationFiltersBtn.addEventListener("click", async () => {
+      filterReservationDate.value = "";
+      filterReservationBranch.value = "";
+      filterReservationStatus.value = "";
+      await loadReservations();
+    });
+  
+    (async function init() {
+    try {
+      await loadAdmin();
+      await loadCsrf();
+      await loadAnnouncements();
+      await loadNotes();
+      await loadSettings();
+      await loadBranches();
+      await loadMenuItems();
+      await loadReservationBranchFilter();
+      await loadReservations();
+    } catch (e) {
+      window.location.href = "/login";
+    }
+})();
   </script>
 </body>
 </html>

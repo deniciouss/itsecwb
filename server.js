@@ -1339,30 +1339,54 @@ app.post("/api/admin/menu-items/:id/toggle", requireAdmin, async (req, res) => {
 // ---- Admin Reservations ----
 app.get("/api/admin/reservations", requireAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.execute(
-      `SELECT
-         r.id,
-         r.user_id,
-         r.full_name,
-         r.email,
-         r.phone,
-         r.reservation_date,
-         r.reservation_time,
-         r.guests_count,
-         r.branch_id,
-         r.status,
-         r.admin_notes,
-         r.reservation_note,
-         r.tables_needed,
-         r.assigned_tables,
-         r.created_at,
-         r.admin_updated_at,
-         b.name AS branch_name
-       FROM reservations r
-       LEFT JOIN branches b ON r.branch_id = b.id
-       ORDER BY r.created_at DESC
-       LIMIT 100`
-    );
+    const filterDate = String(req.query.date || "").trim();
+    const filterBranch = String(req.query.branch_id || "").trim();
+    const filterStatus = String(req.query.status || "").trim().toLowerCase();
+
+    let sql = `
+      SELECT
+        r.id,
+        r.user_id,
+        r.full_name,
+        r.email,
+        r.phone,
+        r.reservation_date,
+        r.reservation_time,
+        r.guests_count,
+        r.branch_id,
+        r.status,
+        r.admin_notes,
+        r.reservation_note,
+        r.tables_needed,
+        r.assigned_tables,
+        r.created_at,
+        r.admin_updated_at,
+        b.name AS branch_name
+      FROM reservations r
+      LEFT JOIN branches b ON r.branch_id = b.id
+      WHERE 1=1
+    `;
+
+    const params = [];
+
+    if (filterDate) {
+      sql += ` AND r.reservation_date = ?`;
+      params.push(filterDate);
+    }
+
+    if (filterBranch && Number.isInteger(Number(filterBranch)) && Number(filterBranch) > 0) {
+      sql += ` AND r.branch_id = ?`;
+      params.push(Number(filterBranch));
+    }
+
+    if (filterStatus) {
+      sql += ` AND LOWER(COALESCE(r.status, 'pending')) = ?`;
+      params.push(filterStatus);
+    }
+
+    sql += ` ORDER BY r.reservation_date DESC, r.reservation_time DESC, r.created_at DESC LIMIT 200`;
+
+    const [rows] = await pool.execute(sql, params);
 
     return res.json({ reservations: rows });
   } catch (err) {
