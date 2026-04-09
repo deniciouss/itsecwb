@@ -26,32 +26,60 @@
   <main class="container">
     <section class="card card-pad">
       <div class="form-title">Menu Preview</div>
-      <div class="form-sub">Simple sample menu page.</div>
+      <div class="form-sub">Available SamgyupGrill menu items.</div>
 
-      <div style="display:grid; gap:12px; margin-top:18px;">
-        <div class="card" style="padding:16px;">
-          <div style="font-weight:900;">Premium Beef Set</div>
-          <div class="help">₱599</div>
-        </div>
-
-        <div class="card" style="padding:16px;">
-          <div style="font-weight:900;">Pork Samgyupsal Set</div>
-          <div class="help">₱399</div>
-        </div>
-
-        <div class="card" style="padding:16px;">
-          <div style="font-weight:900;">Cheese Dip</div>
-          <div class="help">₱99</div>
-        </div>
-
-        <div class="card" style="padding:16px;">
-          <div style="font-weight:900;">Kimchi Fried Rice</div>
-          <div class="help">₱149</div>
-        </div>
+      <div id="menuList" style="display:grid; gap:12px; margin-top:18px;">
+        <div class="help">Loading menu items...</div>
       </div>
     </section>
   </main>
 
   <footer class="footer">ITSECWB</footer>
+
+  <script>
+    const menuList = document.getElementById("menuList");
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function peso(value) {
+      const num = Number(value || 0);
+      return `₱${num.toFixed(2).replace(".00", "")}`;
+    }
+
+    async function loadMenu() {
+      const res = await fetch("/api/menu-items/available");
+      const data = await res.json();
+
+      if (!res.ok) {
+        menuList.innerHTML = `<div class="help error">Failed to load menu items.</div>`;
+        return;
+      }
+
+      if (!data.menuItems || !data.menuItems.length) {
+        menuList.innerHTML = `<div class="help">No menu items available.</div>`;
+        return;
+      }
+
+      menuList.innerHTML = data.menuItems.map(item => `
+        <div class="card" style="padding:16px;">
+          <div style="font-weight:900; font-size:22px;">${escapeHtml(item.name)}</div>
+          <div class="help" style="font-weight:700;">${escapeHtml(item.category)}</div>
+          <div class="help">${escapeHtml(item.description || "No description available.")}</div>
+          <div class="help" style="font-size:18px; font-weight:900; margin-top:6px;">
+            ${escapeHtml(peso(item.price))}
+          </div>
+        </div>
+      `).join("");
+    }
+
+    loadMenu();
+  </script>
 </body>
 </html>

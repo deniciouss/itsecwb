@@ -63,8 +63,20 @@ app.use("/logs", (req, res) => {
 
 // Prevent cache on protected/auth pages
 app.use((req, res, next) => {
-  const noStorePaths = new Set(["/login", "/register", "/welcome", "/reserve", "/track"]);
-  if (noStorePaths.has(req.path) || req.path.startsWith("/admin/")) {
+  const noStorePaths = new Set([
+    "/login",
+    "/register",
+    "/welcome",
+    "/reserve",
+    "/track",
+    "/order"
+  ]);
+
+  if (
+    noStorePaths.has(req.path) ||
+    req.path.startsWith("/admin/") ||
+    req.path.startsWith("/order/")
+  ) {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
@@ -387,6 +399,12 @@ function toIntOrNull(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
   return Math.trunc(n);
+}
+
+function isValidOrderText(value) {
+  if (typeof value !== "string") return false;
+  const clean = value.trim();
+  return clean.length >= 1 && clean.length <= 255;
 }
 
 // ========================================
@@ -1107,6 +1125,22 @@ app.get("/api/branches-active", async (req, res) => {
   }
 });
 
+app.get("/api/menu-items/available", async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, name, category, price, description
+       FROM menu_items
+       WHERE is_available = 1
+       ORDER BY category ASC, name ASC`
+    );
+
+    return res.json({ menuItems: rows });
+  } catch (err) {
+    console.error("[PUBLIC] available menu items error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
 // ---- Menu Items ----
 app.get("/api/admin/menu-items", requireAdmin, async (req, res) => {
   try {
@@ -1359,11 +1393,17 @@ app.post("/api/admin/logout", (req, res) => {
 
 app.get("/branches", (req, res) => res.sendFile(path.join(__dirname, "views", "branches.html")));
 app.get("/menu", (req, res) => res.sendFile(path.join(__dirname, "views", "menu.html")));
+
 app.get("/reserve", requireUserPage, (req, res) => {
   res.sendFile(path.join(__dirname, "views", "reserve.html"));
 });
+
 app.get("/track", requireUserPage, (req, res) => {
   res.sendFile(path.join(__dirname, "views", "track.html"));
+});
+
+app.get("/order/:id", requireUserPage, (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "order.html"));
 });
 
 app.get("/api/me", (req, res) => {
@@ -2198,6 +2238,147 @@ app.post("/api/reservations/:id/delete", requireUserApi, async (req, res) => {
     audit("reservation.delete.error", {
       ip: req.ip,
       user_id: req.session.user.user_id,
+      message: err.message,
+    });
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ========================================
+// CUSTOMER ORDER ACTIONS
+// ========================================
+app.get("/api/reservations/:id/orders", requireUserApi, async (req, res) => {
+  try {
+    const reservationId = Number(req.params.id);
+
+    if (!Number.isInteger(reservationId) || reservationId <= 0) {
+      return res.status(400).json({ error: "Invalid reservation id" });
+    }
+
+    const [reservationRows] = await pool.execute(
+      `SELECT
+         r.id,
+         r.user_id,
+         r.reservation_date,
+         r.reservation_time,
+         r.status,
+         b.name AS branch
+       FROM reservations r
+       LEFT JOIN branches b ON r.branch_id = b.id
+       WHERE r.id = ?
+         AND r.user_id = ?
+       LIMIT 1`,
+      [reservationId, req.session.user.user_id]
+    );
+
+    if (reservationRows.length === 0) {
+      return res.status(404).json({ error: "Reservation not found" });
+    }
+
+    const reservation = reservationRows[0];
+
+    const [orderRows] = await pool.execute(
+      `SELECT id, order_text, quantity, created_at
+       FROM reservation_orders
+       WHERE reservation_id = ?
+         AND user_id = ?
+       ORDER BY created_at DESC, id DESC`,
+      [reservationId, req.session.user.user_id]
+    );
+
+    return res.json({
+      reservation,
+      orders: orderRows
+    });
+  } catch (err) {
+    audit("reservation.orders.list.error", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      reservation_id: req.params.id,
+      message: err.message,
+    });
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/reservations/:id/orders", requireUserApi, async (req, res) => {
+  try {
+    const reservationId = Number(req.params.id);
+    const menuItemId = Number(req.body.menu_item_id);
+    const quantity = Number(req.body.quantity);
+
+    if (!Number.isInteger(reservationId) || reservationId <= 0) {
+      return res.status(400).json({ error: "Invalid reservation id" });
+    }
+
+    if (!Number.isInteger(menuItemId) || menuItemId <= 0) {
+      return res.status(400).json({ error: "Please select a menu item" });
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) {
+      return res.status(400).json({ error: "Quantity must be from 1 to 10 only" });
+    }
+
+    const [reservationRows] = await pool.execute(
+      `SELECT id, user_id, status
+       FROM reservations
+       WHERE id = ?
+         AND user_id = ?
+       LIMIT 1`,
+      [reservationId, req.session.user.user_id]
+    );
+
+    if (reservationRows.length === 0) {
+      return res.status(404).json({ error: "Reservation not found" });
+    }
+
+    const reservation = reservationRows[0];
+
+    if (String(reservation.status || "").toLowerCase() === "cancelled") {
+      return res.status(400).json({ error: "Cannot add order to a cancelled reservation" });
+    }
+
+    const [menuRows] = await pool.execute(
+      `SELECT id, name, is_available
+       FROM menu_items
+       WHERE id = ?
+       LIMIT 1`,
+      [menuItemId]
+    );
+
+    if (menuRows.length === 0) {
+      return res.status(404).json({ error: "Selected menu item not found" });
+    }
+
+    const menuItem = menuRows[0];
+
+    if (Number(menuItem.is_available) !== 1) {
+      return res.status(400).json({ error: "Selected menu item is unavailable" });
+    }
+
+    await pool.execute(
+      `INSERT INTO reservation_orders
+        (reservation_id, user_id, order_text, quantity)
+       VALUES (?, ?, ?, ?)`,
+      [reservationId, req.session.user.user_id, menuItem.name, quantity]
+    );
+
+    audit("reservation.order.create", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      email: req.session.user.email,
+      reservation_id: reservationId,
+      menu_item_id: menuItemId,
+      order_text: menuItem.name,
+      quantity,
+    });
+
+    return res.json({ message: "Order saved successfully" });
+  } catch (err) {
+    audit("reservation.order.create.error", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      reservation_id: req.params.id,
       message: err.message,
     });
     return res.status(500).json({ error: "Server error" });

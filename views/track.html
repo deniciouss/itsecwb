@@ -78,12 +78,20 @@
 
       trackList.innerHTML = data.reservations.map(r => `
         <div class="card" style="padding:16px; margin-bottom:12px;">
-          <div style="font-weight:900; font-size:18px;">${escapeHtml(r.branch)}</div>
-          <div class="help">Status: ${escapeHtml(r.status)}</div>
-          <div class="help">Date: ${escapeHtml(formatDate(r.reservation_date))} • Time: ${escapeHtml(formatTime(r.reservation_time))}</div>
-          <div class="help">Pax: ${escapeHtml(r.pax)} • Tables Needed: ${escapeHtml(r.tables_needed)}</div>
-          <div class="help">Assigned Tables: ${escapeHtml(r.assigned_tables || r.table_number)}</div>
-          <div class="help">Note: ${escapeHtml(r.reservation_note || "None")}</div>
+          <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:900; font-size:18px;">${escapeHtml(r.branch)}</div>
+              <div class="help">Status: ${escapeHtml(r.status)}</div>
+              <div class="help">Date: ${escapeHtml(formatDate(r.reservation_date))} • Time: ${escapeHtml(formatTime(r.reservation_time))}</div>
+              <div class="help">Pax: ${escapeHtml(r.pax)} • Tables Needed: ${escapeHtml(r.tables_needed)}</div>
+              <div class="help">Assigned Tables: ${escapeHtml(r.assigned_tables || r.table_number || "Not assigned")}</div>
+              <div class="help">Note: ${escapeHtml(r.reservation_note || "None")}</div>
+            </div>
+
+            <div style="display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+              <a class="btn btn-primary" href="/order/${r.id}">Order Here</a>
+            </div>
+          </div>
         </div>
       `).join("");
     }

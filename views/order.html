@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Order • SamgyupGrill</title>
+  <link rel="stylesheet" href="/public/css/theme.css">
+</head>
+<body class="grill-bg">
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/">
+        <div class="logo"></div>
+        <div>Samgyup<span style="color:var(--ember)">Grill</span></div>
+      </a>
+      <nav class="nav-links">
+        <a href="/branches">Branches</a>
+        <a href="/menu">Menu</a>
+        <a href="/reserve">Reserve</a>
+        <a href="/track">Track</a>
+        <button class="btn btn-ghost" id="logoutBtn" type="button">Logout</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card card-pad" style="margin-bottom:20px;">
+      <div class="form-title">Place Order</div>
+      <div class="form-sub">Select an item from the menu and choose quantity from 1 to 10.</div>
+
+      <div id="reservationInfo" class="help" style="margin-top:10px;"></div>
+      <div id="orderMessage" class="help" style="display:none; margin-top:10px; color:var(--ember); font-weight:700;"></div>
+      <div id="orderError" class="help error" style="display:none; margin-top:10px; color:var(--ember);"></div>
+
+      <form class="form" id="orderForm" style="margin-top:18px;">
+        <div class="field">
+          <div class="label">Order Item</div>
+          <select class="input" id="menu_item_id" required>
+            <option value="">Loading menu items...</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <div class="label">Quantity</div>
+          <input
+            class="input"
+            id="quantity"
+            type="number"
+            min="1"
+            max="10"
+            required
+          />
+          <div class="help">Minimum 1, maximum 10.</div>
+        </div>
+
+        <button class="btn btn-primary" type="submit">Save Order</button>
+      </form>
+    </section>
+
+    <section class="card card-pad">
+      <div class="form-title">Saved Orders</div>
+      <div class="form-sub">These are the saved menu orders for this reservation.</div>
+      <div id="orderList" style="margin-top:18px;"></div>
+    </section>
+  </main>
+
+  <footer class="footer">ITSECWB</footer>
+
+  <script>
+    const reservationId = window.location.pathname.split("/").pop();
+    const reservationInfo = document.getElementById("reservationInfo");
+    const orderMessage = document.getElementById("orderMessage");
+    const orderError = document.getElementById("orderError");
+    const orderList = document.getElementById("orderList");
+    const orderForm = document.getElementById("orderForm");
+    const menuItemSelect = document.getElementById("menu_item_id");
+
+    function showMessage(text) {
+      orderMessage.textContent = text;
+      orderMessage.style.display = "block";
+      orderError.style.display = "none";
+    }
+
+    function showError(text) {
+      orderError.textContent = text;
+      orderError.style.display = "block";
+      orderMessage.style.display = "none";
+    }
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function formatDate(value) {
+      return String(value || "").slice(0, 10);
+    }
+
+    function formatTime(value) {
+      return String(value || "").slice(0, 5);
+    }
+
+    function peso(value) {
+      const num = Number(value || 0);
+      return `₱${num.toFixed(2).replace(".00", "")}`;
+    }
+
+    async function loadMenuItems() {
+      const res = await fetch("/api/menu-items/available");
+      const data = await res.json();
+
+      if (!res.ok) {
+        menuItemSelect.innerHTML = `<option value="">Unable to load menu items</option>`;
+        return;
+      }
+
+      if (!data.menuItems || !data.menuItems.length) {
+        menuItemSelect.innerHTML = `<option value="">No available menu items</option>`;
+        return;
+      }
+
+      menuItemSelect.innerHTML =
+        `<option value="">Select menu item</option>` +
+        data.menuItems.map(item => `
+          <option value="${item.id}">
+            ${escapeHtml(item.name)} — ${escapeHtml(item.category)} — ${escapeHtml(peso(item.price))}
+          </option>
+        `).join("");
+    }
+
+    async function loadReservationDetails() {
+      const res = await fetch(`/api/reservations/${reservationId}/orders`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          window.location.href = "/login";
+          return;
+        }
+        showError(data.error || "Failed to load reservation.");
+        return;
+      }
+
+      const reservation = data.reservation;
+      reservationInfo.textContent =
+        `Reservation: ${reservation.branch} • ${formatDate(reservation.reservation_date)} • ${formatTime(reservation.reservation_time)} • Status: ${reservation.status}`;
+
+      if (!data.orders.length) {
+        orderList.innerHTML = `<div class="help">No saved orders yet.</div>`;
+        return;
+      }
+
+      orderList.innerHTML = data.orders.map(o => `
+        <div class="card" style="padding:16px; margin-bottom:12px;">
+          <div style="font-weight:900; font-size:18px;">${escapeHtml(o.order_text)}</div>
+          <div class="help">Quantity: ${escapeHtml(o.quantity)}</div>
+          <div class="help">Saved: ${escapeHtml(String(o.created_at || ""))}</div>
+        </div>
+      `).join("");
+    }
+
+    orderForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const payload = {
+        menu_item_id: Number(document.getElementById("menu_item_id").value),
+        quantity: Number(document.getElementById("quantity").value)
+      };
+
+      const res = await fetch(`/api/reservations/${reservationId}/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || "Failed to save order.");
+        return;
+      }
+
+      orderForm.reset();
+      showMessage(data.message || "Order saved.");
+      await loadReservationDetails();
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      await fetch("/api/logout", { method: "POST" });
+      window.location.href = "/login";
+    });
+
+    (async function init() {
+      await loadMenuItems();
+      await loadReservationDetails();
+    })();
+  </script>
+</body>
+</html>
