@@ -51,3 +51,19 @@
 {"ts":"2026-04-09T16:39:14.009Z","event":"reservation.order.delete","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","order_id":3,"reservation_id":1,"order_text":"Iced Tea Pitcher","quantity":10}
 {"ts":"2026-04-09T16:50:21.464Z","event":"reservation.order.create","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","reservation_id":1,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":2}
 {"ts":"2026-04-09T16:50:30.395Z","event":"reservation.order.edit","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","order_id":4,"reservation_id":1,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":1}
+{"ts":"2026-04-09T14:25:37.531Z","event":"auth.admin_login.success","ip":"::1","email":"joash_nas@dlsu.edu.ph","user_id":1,"role":"admin"}
+{"ts":"2026-04-09T14:28:06.146Z","event":"auth.login.success","ip":"::1","email":"joashnas@gmail.com","user_id":2,"role":"customer"}
+{"ts":"2026-04-09T14:28:28.990Z","event":"reservation.create","ip":"::1","user_id":2,"email":"joashnas@gmail.com","reservation_id":1,"branch_id":5,"branch_name":"BGC","assigned_tables":"1","reservation_time":"12:00","reservation_end_time":"14:00"}
+{"ts":"2026-04-09T14:29:12.642Z","event":"auth.logout","email":"joashnas@gmail.com","ip":"::1"}
+{"ts":"2026-04-09T14:29:23.693Z","event":"auth.admin_login.success","ip":"::1","email":"joash_nas@dlsu.edu.ph","user_id":1,"role":"admin"}
+{"ts":"2026-04-09T14:34:47.456Z","event":"auth.login.success","ip":"::1","email":"joashnas@gmail.com","user_id":2,"role":"customer"}
+{"ts":"2026-04-09T14:35:00.063Z","event":"reservation.create","ip":"::1","user_id":2,"email":"joashnas@gmail.com","reservation_id":2,"branch_id":6,"branch_name":"Taft","assigned_tables":"1","reservation_time":"17:00","reservation_end_time":"19:00"}
+{"ts":"2026-04-09T14:35:19.608Z","event":"reservation.create","ip":"::1","user_id":2,"email":"joashnas@gmail.com","reservation_id":3,"branch_id":7,"branch_name":"Katipunan","assigned_tables":"1,2","reservation_time":"15:00","reservation_end_time":"17:00"}
+{"ts":"2026-04-09T14:35:21.551Z","event":"auth.logout","email":"joashnas@gmail.com","ip":"::1"}
+{"ts":"2026-04-09T14:35:32.669Z","event":"auth.admin_login.success","ip":"::1","email":"joash_nas@dlsu.edu.ph","user_id":1,"role":"admin"}
+{"ts":"2026-04-09T17:21:18.979Z","event":"auth.admin_login.success","ip":"::1","email":"joash_nas@dlsu.edu.ph","user_id":1,"role":"admin"}
+{"ts":"2026-04-09T17:22:04.075Z","event":"auth.admin_logout","email":"joash_nas@dlsu.edu.ph","ip":"::1"}
+{"ts":"2026-04-09T17:22:20.843Z","event":"auth.login.success","ip":"::1","email":"joashnas@gmail.com","user_id":2,"role":"customer"}
+{"ts":"2026-04-09T17:24:59.661Z","event":"auth.admin_login.success","ip":"::1","email":"joash_nas@dlsu.edu.ph","user_id":1,"role":"admin"}
+{"ts":"2026-04-09T17:25:25.904Z","event":"auth.admin_logout","email":"joash_nas@dlsu.edu.ph","ip":"::1"}
+{"ts":"2026-04-09T17:25:41.858Z","event":"auth.login.success","ip":"::1","email":"joashnas@gmail.com","user_id":2,"role":"customer"}

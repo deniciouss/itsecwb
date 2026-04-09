@@ -24,3 +24,20 @@
 [2026-04-09T13:41:45.092Z] [INFO] Kitchen note created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":11,"preview":"Syslog test"}
 [2026-04-09T13:45:08.735Z] [INFO] Announcement created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":15,"preview":"syslogging test"}
 [2026-04-09T13:56:01.458Z] [INFO] Announcement created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":10,"preview":"papertrail"}
+[2026-04-09T14:25:37.531Z] [INFO] Admin login successful {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","user_id":1}
+[2026-04-09T14:26:23.654Z] [INFO] Announcement created {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","length":1,"preview":"u"}
+[2026-04-09T14:29:23.693Z] [INFO] Admin login successful {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","user_id":1}
+[2026-04-09T14:35:32.670Z] [INFO] Admin login successful {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","user_id":1}
+[2026-04-09T14:35:50.650Z] [INFO] Reservation status updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","reservation_id":2,"customer_name":"Nash Nas","customer_email":"joashnas@gmail.com","new_status":"approved"}
+[2026-04-09T14:37:45.912Z] [INFO] Reservation status updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","reservation_id":2,"customer_name":"Nash Nas","customer_email":"joashnas@gmail.com","new_status":"approved"}
+[2026-04-09T14:38:09.735Z] [INFO] Reservation status updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","reservation_id":3,"customer_name":"Nash Nas","customer_email":"joashnas@gmail.com","new_status":"cancelled"}
+[2026-04-09T14:38:12.147Z] [INFO] Reservation status updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","reservation_id":3,"customer_name":"Nash Nas","customer_email":"joashnas@gmail.com","new_status":"no_show"}
+[2026-04-09T17:21:18.981Z] [INFO] Admin login successful {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","user_id":1}
+[2026-04-09T17:21:29.162Z] [INFO] Branch status toggled {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","branch_id":4,"branch_name":"test","is_active":0}
+[2026-04-09T17:21:43.105Z] [INFO] Branch status toggled {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","branch_id":3,"branch_name":"wd","is_active":0}
+[2026-04-09T17:21:56.261Z] [INFO] Menu item availability toggled {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","item_id":1,"item_name":"Samgyup Couple Set","is_available":0}
+[2026-04-09T17:22:04.076Z] [INFO] Admin logged out {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph"}
+[2026-04-09T17:24:59.662Z] [INFO] Admin login successful {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","user_id":1}
+[2026-04-09T17:25:05.109Z] [INFO] Menu item availability toggled {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","item_id":1,"item_name":"Samgyup Couple Set","is_available":1}
+[2026-04-09T17:25:15.563Z] [INFO] Branch status toggled {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","branch_id":3,"branch_name":"wd","is_active":1}
+[2026-04-09T17:25:25.904Z] [INFO] Admin logged out {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph"}
