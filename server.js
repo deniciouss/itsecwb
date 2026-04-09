@@ -152,6 +152,17 @@ function sendApiDebugOrGenericError(res, err, genericMessage = "Server error", s
   return res.status(status).json({ error: genericMessage });
 }
 
+function sendAdminApiError(res, err, genericMessage = "Server error", status = 500) {
+  if (DEBUG_ERRORS) {
+    return res.status(status).json({
+      error: err && err.message ? err.message : genericMessage,
+      stack: err && err.stack ? err.stack : String(err || genericMessage),
+    });
+  }
+
+  return res.status(status).json({ error: genericMessage });
+}
+
 // ========================================
 // SESSION STORE
 // ========================================
@@ -812,7 +823,7 @@ app.get("/api/admin/announcements", requireAdmin, async (req, res) => {
     return res.json({ announcements: rows });
   } catch (err) {
     console.error("[ADMIN] announcements list error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -842,7 +853,7 @@ app.post("/api/admin/announcements", requireAdmin, async (req, res) => {
     return res.json({ message: "Announcement saved" });
   } catch (err) {
     console.error("[ADMIN] announcements create error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -858,7 +869,7 @@ app.get("/api/admin/notes", requireAdmin, async (req, res) => {
     return res.json({ notes: rows });
   } catch (err) {
     console.error("[ADMIN] notes list error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -888,7 +899,7 @@ app.post("/api/admin/notes", requireAdmin, async (req, res) => {
     return res.json({ message: "Note saved" });
   } catch (err) {
     console.error("[ADMIN] notes create error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -934,7 +945,7 @@ app.get("/api/admin/settings", requireAdmin, async (req, res) => {
     return res.json({ settings: rows[0] });
   } catch (err) {
     console.error("[ADMIN] settings get error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -994,7 +1005,7 @@ app.post("/api/admin/settings", requireAdmin, async (req, res) => {
     return res.json({ message: "Settings updated" });
   } catch (err) {
     console.error("[ADMIN] settings update error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -1010,7 +1021,7 @@ app.get("/api/admin/branches", requireAdmin, async (req, res) => {
     return res.json({ branches: rows });
   } catch (err) {
     console.error("[ADMIN] branches list error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -1057,7 +1068,7 @@ app.post("/api/admin/branches", requireAdmin, async (req, res) => {
     return res.json({ message: "Branch added successfully" });
   } catch (err) {
     console.error("[ADMIN] branch create error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -1104,7 +1115,7 @@ app.post("/api/admin/branches/:id/toggle", requireAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error("[ADMIN] branch toggle error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -1121,7 +1132,7 @@ app.get("/api/branches-active", async (req, res) => {
     return res.json({ branches: rows });
   } catch (err) {
     console.error("[PUBLIC] active branches list error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -1137,7 +1148,7 @@ app.get("/api/menu-items/available", async (req, res) => {
     return res.json({ menuItems: rows });
   } catch (err) {
     console.error("[PUBLIC] available menu items error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -1153,7 +1164,7 @@ app.get("/api/admin/menu-items", requireAdmin, async (req, res) => {
     return res.json({ menuItems: rows });
   } catch (err) {
     console.error("[ADMIN] menu items list error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -1201,7 +1212,7 @@ app.post("/api/admin/menu-items", requireAdmin, async (req, res) => {
     return res.json({ message: "Menu item added successfully" });
   } catch (err) {
     console.error("[ADMIN] menu item create error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -1248,7 +1259,7 @@ app.post("/api/admin/menu-items/:id/toggle", requireAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error("[ADMIN] menu item toggle error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -1283,7 +1294,7 @@ app.get("/api/admin/reservations", requireAdmin, async (req, res) => {
     return res.json({ reservations: rows });
   } catch (err) {
     console.error("[ADMIN] reservations list error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 
@@ -1347,7 +1358,7 @@ app.post("/api/admin/reservations/:id/status", requireAdmin, async (req, res) =>
     return res.json({ message: "Reservation updated successfully" });
   } catch (err) {
     console.error("[ADMIN] reservation update error:", err);
-    return res.status(500).json({ error: "Server error" });
+    return sendAdminApiError(res, err, "Server error", 500);
   }
 });
 

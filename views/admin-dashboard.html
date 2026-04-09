@@ -27,6 +27,9 @@
       <div class="form-title">Admin Dashboard</div>
       <div class="form-sub" id="adminInfo">Loading admin profile...</div>
 
+      <div id="adminError"
+           style="display:none; margin-top:16px; padding:12px; background:#fee2e2; color:var(--ember); border-radius:10px; white-space:pre-wrap; line-height:1.45;"></div>
+
       <div style="margin-top:18px; display:grid; gap:12px;">
 
         <!-- 1) Announcements -->
@@ -186,16 +189,6 @@
           <div id="menuList" style="display:grid; gap:10px;"></div>
         </div>
 
-        <!-- 6) Reservation Management -->
-        <div class="card card-pad" style="border-radius:14px;">
-          <div style="font-weight:900; margin-bottom:6px;">Reservation Management</div>
-          <div class="help">Admin can review and update reservation status.</div>
-
-          <div style="height:14px;"></div>
-          <div style="font-weight:900; margin-bottom:6px;">Reservations</div>
-          <div id="reservationList" style="display:grid; gap:10px;"></div>
-        </div>
-
         <div class="card card-pad" style="border-radius:14px;">
           <div style="font-weight:900; margin-bottom:6px;">Security Notes</div>
           <ul style="margin:0; padding-left:18px; opacity:.85;">
@@ -216,6 +209,7 @@
   <script>
     const adminInfoEl = document.getElementById("adminInfo");
     const logoutBtn = document.getElementById("logoutBtn");
+    const adminError = document.getElementById("adminError");
 
     const announceText = document.getElementById("announceText");
     const announceBtn = document.getElementById("announceBtn");
@@ -251,48 +245,7 @@
     const menuStatus = document.getElementById("menuStatus");
     const menuList = document.getElementById("menuList");
 
-    const reservationList = document.getElementById("reservationList");
-
     let CSRF = "";
-
-    async function loadAdmin() {
-      const res = await fetch("/api/admin/me", { method: "GET" });
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data.admin) {
-        window.location.href = "/login";
-        return;
-      }
-
-      adminInfoEl.innerHTML = `
-        Logged in as <strong>${escapeHtml(data.admin.full_name)}</strong>
-        (<span style="opacity:.85;">${escapeHtml(data.admin.email)}</span>)
-        • Role: <strong>${escapeHtml(data.admin.role)}</strong>
-      `;
-    }
-
-    async function loadCsrf() {
-      const res = await fetch("/api/admin/csrf", { method: "GET" });
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data.csrfToken) {
-        window.location.href = "/login";
-        return;
-      }
-
-      CSRF = data.csrfToken;
-    }
-
-    logoutBtn.addEventListener("click", async () => {
-      try {
-        await fetch("/api/admin/logout", {
-          method: "POST",
-          headers: { "X-CSRF-Token": CSRF }
-        });
-      } finally {
-        window.location.replace("/login");
-      }
-    });
 
     function escapeHtml(str) {
       return String(str || "")
@@ -301,6 +254,24 @@
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
+    }
+
+    function showAdminError(message) {
+      adminError.textContent = message || "Server error";
+      adminError.style.display = "block";
+    }
+
+    function hideAdminError() {
+      adminError.textContent = "";
+      adminError.style.display = "none";
+    }
+
+    function formatError(result, fallback) {
+      const base = result?.error || fallback;
+      if (result?.stack) {
+        return `${base}\n\n${result.stack}`;
+      }
+      return base;
     }
 
     function renderList(ul, items, field) {
@@ -321,7 +292,9 @@
     }
 
     async function apiPost(url, bodyObj) {
-      return fetch(url, {
+      hideAdminError();
+
+      const res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -329,12 +302,64 @@
         },
         body: JSON.stringify(bodyObj || {})
       });
+
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
     }
 
-    async function loadAnnouncements() {
-      const res = await fetch("/api/admin/announcements");
+    async function apiGet(url) {
+      hideAdminError();
+
+      const res = await fetch(url, { method: "GET" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) return;
+      return { res, data };
+    }
+
+    async function loadAdmin() {
+      const { res, data } = await apiGet("/api/admin/me");
+
+      if (!res.ok || !data.admin) {
+        window.location.href = "/login";
+        return;
+      }
+
+      adminInfoEl.innerHTML = `
+        Logged in as <strong>${escapeHtml(data.admin.full_name)}</strong>
+        (<span style="opacity:.85;">${escapeHtml(data.admin.email)}</span>)
+        • Role: <strong>${escapeHtml(data.admin.role)}</strong>
+      `;
+    }
+
+    async function loadCsrf() {
+      const { res, data } = await apiGet("/api/admin/csrf");
+
+      if (!res.ok || !data.csrfToken) {
+        window.location.href = "/login";
+        return;
+      }
+
+      CSRF = data.csrfToken;
+    }
+
+    logoutBtn.addEventListener("click", async () => {
+      try {
+        await fetch("/api/admin/logout", {
+          method: "POST",
+          headers: { "X-CSRF-Token": CSRF }
+        });
+      } finally {
+        window.location.replace("/login");
+      }
+    });
+
+    async function loadAnnouncements() {
+      const { res, data } = await apiGet("/api/admin/announcements");
+
+      if (!res.ok) {
+        showAdminError(formatError(data, "Failed to load announcements."));
+        return;
+      }
+
       renderList(announceList, data.announcements, "message");
     }
 
@@ -347,11 +372,10 @@
         return;
       }
 
-      const res = await apiPost("/api/admin/announcements", { message });
-      const data = await res.json().catch(() => ({}));
+      const { res, data } = await apiPost("/api/admin/announcements", { message });
 
       if (!res.ok) {
-        announceStatus.textContent = data.error || "Failed to save announcement.";
+        announceStatus.textContent = formatError(data, "Failed to save announcement.");
         return;
       }
 
@@ -361,9 +385,13 @@
     });
 
     async function loadNotes() {
-      const res = await fetch("/api/admin/notes");
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) return;
+      const { res, data } = await apiGet("/api/admin/notes");
+
+      if (!res.ok) {
+        showAdminError(formatError(data, "Failed to load notes."));
+        return;
+      }
+
       renderList(noteList, data.notes, "note");
     }
 
@@ -376,11 +404,10 @@
         return;
       }
 
-      const res = await apiPost("/api/admin/notes", { note });
-      const data = await res.json().catch(() => ({}));
+      const { res, data } = await apiPost("/api/admin/notes", { note });
 
       if (!res.ok) {
-        noteStatus.textContent = data.error || "Failed to save note.";
+        noteStatus.textContent = formatError(data, "Failed to save note.");
         return;
       }
 
@@ -390,9 +417,12 @@
     });
 
     async function loadSettings() {
-      const res = await fetch("/api/admin/settings");
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.settings) return;
+      const { res, data } = await apiGet("/api/admin/settings");
+
+      if (!res.ok || !data.settings) {
+        showAdminError(formatError(data, "Failed to load settings."));
+        return;
+      }
 
       maxRes.value = data.settings.max_reservations_per_slot ?? "";
       prepMin.value = data.settings.preparation_time_minutes ?? "";
@@ -417,11 +447,10 @@
         grace_period_minutes: graceMin.value
       };
 
-      const res = await apiPost("/api/admin/settings", payload);
-      const data = await res.json().catch(() => ({}));
+      const { res, data } = await apiPost("/api/admin/settings", payload);
 
       if (!res.ok) {
-        settingsStatus.textContent = data.error || "Failed to update settings.";
+        settingsStatus.textContent = formatError(data, "Failed to update settings.");
         return;
       }
 
@@ -430,10 +459,12 @@
     });
 
     async function loadBranches() {
-      const res = await fetch("/api/admin/branches");
-      const data = await res.json().catch(() => ({}));
+      const { res, data } = await apiGet("/api/admin/branches");
 
-      if (!res.ok) return;
+      if (!res.ok) {
+        showAdminError(formatError(data, "Failed to load branches."));
+        return;
+      }
 
       branchList.innerHTML = "";
 
@@ -471,11 +502,10 @@
         btn.addEventListener("click", async () => {
           const branchId = btn.getAttribute("data-branch-id");
 
-          const res = await apiPost(`/api/admin/branches/${branchId}/toggle`, {});
-          const data = await res.json().catch(() => ({}));
+          const { res, data } = await apiPost(`/api/admin/branches/${branchId}/toggle`, {});
 
           if (!res.ok) {
-            branchStatus.textContent = data.error || "Failed to update branch status.";
+            branchStatus.textContent = formatError(data, "Failed to update branch status.");
             return;
           }
 
@@ -497,11 +527,10 @@
         operating_hours: branchHours.value
       };
 
-      const res = await apiPost("/api/admin/branches", payload);
-      const data = await res.json().catch(() => ({}));
+      const { res, data } = await apiPost("/api/admin/branches", payload);
 
       if (!res.ok) {
-        branchStatus.textContent = data.error || "Failed to add branch.";
+        branchStatus.textContent = formatError(data, "Failed to add branch.");
         return;
       }
 
@@ -515,10 +544,12 @@
     });
 
     async function loadMenuItems() {
-      const res = await fetch("/api/admin/menu-items");
-      const data = await res.json().catch(() => ({}));
+      const { res, data } = await apiGet("/api/admin/menu-items");
 
-      if (!res.ok) return;
+      if (!res.ok) {
+        showAdminError(formatError(data, "Failed to load menu items."));
+        return;
+      }
 
       menuList.innerHTML = "";
 
@@ -556,11 +587,10 @@
         btn.addEventListener("click", async () => {
           const itemId = btn.getAttribute("data-menu-id");
 
-          const res = await apiPost(`/api/admin/menu-items/${itemId}/toggle`, {});
-          const data = await res.json().catch(() => ({}));
+          const { res, data } = await apiPost(`/api/admin/menu-items/${itemId}/toggle`, {});
 
           if (!res.ok) {
-            menuStatus.textContent = data.error || "Failed to update menu item status.";
+            menuStatus.textContent = formatError(data, "Failed to update menu item status.");
             return;
           }
 
@@ -582,11 +612,10 @@
         description: menuDescription.value
       };
 
-      const res = await apiPost("/api/admin/menu-items", payload);
-      const data = await res.json().catch(() => ({}));
+      const { res, data } = await apiPost("/api/admin/menu-items", payload);
 
       if (!res.ok) {
-        menuStatus.textContent = data.error || "Failed to add menu item.";
+        menuStatus.textContent = formatError(data, "Failed to add menu item.");
         return;
       }
 
@@ -599,99 +628,6 @@
       await loadMenuItems();
     });
 
-    function prettyStatus(status) {
-      switch (status) {
-        case "pending": return "Pending";
-        case "approved": return "Approved";
-        case "rejected": return "Rejected";
-        case "completed": return "Completed";
-        case "no_show": return "No Show";
-        case "cancelled": return "Cancelled";
-        default: return status || "Unknown";
-      }
-    }
-
-    async function updateReservationStatus(reservationId, status, adminNotes = "") {
-      const res = await apiPost(`/api/admin/reservations/${reservationId}/status`, {
-        status,
-        admin_notes: adminNotes
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to update reservation.");
-      }
-
-      return data;
-    }
-
-    async function loadReservations() {
-      const res = await fetch("/api/admin/reservations");
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) return;
-
-      reservationList.innerHTML = "";
-
-      if (!data.reservations || data.reservations.length === 0) {
-        reservationList.innerHTML = `<div class="help">No reservations yet.</div>`;
-        return;
-      }
-
-      for (const r of data.reservations) {
-        const div = document.createElement("div");
-        div.className = "card card-pad";
-        div.style.borderRadius = "12px";
-
-        const dateText = r.reservation_date ? new Date(r.reservation_date).toLocaleDateString() : "";
-        const branchText = r.branch_name ? r.branch_name : "No branch assigned";
-
-        div.innerHTML = `
-          <div style="display:grid; gap:10px;">
-            <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-              <div>
-                <div style="font-weight:900;">${escapeHtml(r.full_name)}</div>
-                <div class="help">Email: ${escapeHtml(r.email || "")}</div>
-                <div class="help">Phone: ${escapeHtml(r.phone || "")}</div>
-                <div class="help">Date: ${escapeHtml(dateText)} | Time: ${escapeHtml(r.reservation_time || "")}</div>
-                <div class="help">Guests: ${escapeHtml(String(r.guests_count ?? ""))}</div>
-                <div class="help">Branch: ${escapeHtml(branchText)}</div>
-                <div class="help">Status: <strong>${escapeHtml(prettyStatus(r.status))}</strong></div>
-                <div class="help">Admin notes: ${escapeHtml(r.admin_notes || "-")}</div>
-              </div>
-            </div>
-
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button class="btn btn-ghost" type="button" data-action="approved" data-id="${r.id}">Approve</button>
-              <button class="btn btn-ghost" type="button" data-action="rejected" data-id="${r.id}">Reject</button>
-              <button class="btn btn-ghost" type="button" data-action="completed" data-id="${r.id}">Complete</button>
-              <button class="btn btn-ghost" type="button" data-action="no_show" data-id="${r.id}">No Show</button>
-              <button class="btn btn-ghost" type="button" data-action="cancelled" data-id="${r.id}">Cancel</button>
-            </div>
-          </div>
-        `;
-
-        const buttons = div.querySelectorAll("button[data-action]");
-        buttons.forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            const status = btn.getAttribute("data-action");
-            const id = btn.getAttribute("data-id");
-            const note = prompt(`Optional admin note for ${prettyStatus(status)}:`, "") || "";
-
-            try {
-              await updateReservationStatus(id, status, note);
-              await loadReservations();
-            } catch (err) {
-              alert(err.message || "Failed to update reservation.");
-            }
-          });
-        });
-
-        reservationList.appendChild(div);
-      }
-    }
-
     (async function init() {
       try {
         await loadAdmin();
@@ -701,7 +637,6 @@
         await loadSettings();
         await loadBranches();
         await loadMenuItems();
-        await loadReservations();
       } catch (e) {
         window.location.href = "/login";
       }
