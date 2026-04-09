@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Track • SamgyupGrill</title>
+  <title>Branches • SamgyupGrill</title>
   <link rel="stylesheet" href="/public/css/theme.css">
 </head>
 <body class="grill-bg">
@@ -18,85 +18,35 @@
         <a href="/menu">Menu</a>
         <a href="/reserve">Reserve</a>
         <a href="/track">Track</a>
-        <button class="btn btn-ghost" id="logoutBtn" type="button">Logout</button>
+        <a class="btn btn-ghost" href="/login">Login</a>
       </nav>
     </div>
   </header>
 
   <main class="container">
     <section class="card card-pad">
-      <div class="form-title">Track My Reservations</div>
-      <div class="form-sub">Read-only tracker for regular user reservations.</div>
-      <div id="trackList" style="margin-top:18px;"></div>
+      <div class="form-title">Our Branches</div>
+      <div class="form-sub">Choose a branch before reserving.</div>
+
+      <div style="display:grid; gap:12px; margin-top:18px;">
+        <div class="card" style="padding:16px;">
+          <div style="font-weight:900; font-size:18px;">Taft Branch</div>
+          <div class="help">20 tables available • Opening hours: 11:00 AM–8:00 PM</div>
+        </div>
+
+        <div class="card" style="padding:16px;">
+          <div style="font-weight:900; font-size:18px;">Katipunan Branch</div>
+          <div class="help">20 tables available • Opening hours: 11:00 AM–8:00 PM</div>
+        </div>
+
+        <div class="card" style="padding:16px;">
+          <div style="font-weight:900; font-size:18px;">BGC Branch</div>
+          <div class="help">20 tables available • Opening hours: 11:00 AM–8:00 PM</div>
+        </div>
+      </div>
     </section>
   </main>
 
   <footer class="footer">ITSECWB</footer>
-
-  <script>
-    const trackList = document.getElementById("trackList");
-
-    function escapeHtml(str) {
-      return String(str || "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    }
-
-    function formatDate(value) {
-      return String(value || "").slice(0, 10);
-    }
-
-    function formatTime(value) {
-      return String(value || "").slice(0, 5);
-    }
-
-    async function loadMe() {
-      const res = await fetch("/api/me");
-      if (!res.ok) {
-        window.location.href = "/login";
-        return false;
-      }
-      return true;
-    }
-
-    async function loadReservations() {
-      const res = await fetch("/api/reservations");
-      const data = await res.json();
-
-      if (!res.ok) {
-        trackList.innerHTML = `<div class="help error">Failed to load reservations.</div>`;
-        return;
-      }
-
-      if (!data.reservations.length) {
-        trackList.innerHTML = `<div class="help">No reservations found.</div>`;
-        return;
-      }
-
-      trackList.innerHTML = data.reservations.map(r => `
-        <div class="card" style="padding:16px; margin-bottom:12px;">
-          <div style="font-weight:900; font-size:18px;">${escapeHtml(r.branch)}</div>
-          <div class="help">Status: ${escapeHtml(r.status)}</div>
-          <div class="help">Date: ${escapeHtml(formatDate(r.reservation_date))} • Time: ${escapeHtml(formatTime(r.reservation_time))}</div>
-          <div class="help">Pax: ${escapeHtml(r.pax)} • Tables Needed: ${escapeHtml(r.tables_needed)}</div>
-          <div class="help">Assigned Tables: ${escapeHtml(r.assigned_tables || r.table_number)}</div>
-          <div class="help">Note: ${escapeHtml(r.reservation_note || "None")}</div>
-        </div>
-      `).join("");
-    }
-
-    document.getElementById("logoutBtn").addEventListener("click", async () => {
-      await fetch("/api/logout", { method: "POST" });
-      window.location.href = "/login";
-    });
-
-    (async function init() {
-      const ok = await loadMe();
-      if (ok) await loadReservations();
-    })();
-  </script>
 </body>
 </html>
