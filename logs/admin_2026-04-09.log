@@ -13,3 +13,9 @@
 [2026-04-09T09:26:40.053Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","max_reservations_per_slot":21,"preparation_time_minutes":16,"dine_in_time_limit_minutes":90,"grace_period_minutes":11}
 [2026-04-09T09:27:25.575Z] [INFO] Branch created {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","branch_name":"SamgyupGrill Taft","location":"Taft"}
 [2026-04-09T09:29:39.598Z] [INFO] Menu item created {"ip":"::1","adminEmail":"joash_nas@dlsu.edu.ph","item_name":"Samgyup Couple Set","category":"Samguyp Set","price":1500}
+[2026-04-09T09:23:45.430Z] [INFO] Announcement created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":2}
+[2026-04-09T09:23:46.765Z] [INFO] Kitchen note created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":5}
+[2026-04-09T09:27:16.847Z] [INFO] Announcement created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":5,"preview":"Emman"}
+[2026-04-09T09:31:10.241Z] [INFO] Kitchen note created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":4,"preview":"Test"}
+[2026-04-09T09:31:15.710Z] [INFO] Announcement created {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","length":4,"preview":"test"}
+[2026-04-09T09:31:18.130Z] [INFO] Admin settings updated {"ip":"::1","adminEmail":"emmanuelandrew.ting@gmail.com","max_reservations_per_slot":20,"preparation_time_minutes":15}
