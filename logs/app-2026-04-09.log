@@ -19,3 +19,29 @@
 {"ts":"2026-04-09T12:56:40.572Z","event":"reservation.order.edit","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","order_id":1,"reservation_id":1,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":1}
 {"ts":"2026-04-09T12:56:55.546Z","event":"reservation.order.delete","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","order_id":1,"reservation_id":1,"order_text":"Iced Tea Pitcher","quantity":1}
 {"ts":"2026-04-09T12:58:10.905Z","event":"reservation.order.edit","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","order_id":2,"reservation_id":1,"menu_item_id":5,"order_text":"Bulgogi Beef","quantity":3}
+{"ts":"2026-04-09T13:07:18.720Z","event":"reservation.orders.list.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:07:23.683Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:07:31.022Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:07:34.957Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:07:46.168Z","event":"reservation.orders.list.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:07:51.123Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:07:51.932Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:07:52.095Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:07:59.929Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:08:01.414Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:08:01.735Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:08:01.972Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:08:15.755Z","event":"reservation.orders.list.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:08:23.812Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:08:25.174Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:08:26.526Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:08:28.476Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:08:29.391Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"1","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:08:47.320Z","event":"reservation.cancel","ip":"::1","user_id":1,"email":"jianna_loyola@dlsu.edu.ph","reservation_id":1}
+{"ts":"2026-04-09T13:09:05.895Z","event":"reservation.create","ip":"::1","user_id":1,"email":"jianna_loyola@dlsu.edu.ph","reservation_id":2,"branch_id":1,"branch_name":"BGC","assigned_tables":"1,2,3","reservation_time":"14:00","reservation_end_time":"16:00"}
+{"ts":"2026-04-09T13:09:12.443Z","event":"reservation.orders.list.error","ip":"::1","user_id":1,"reservation_id":"2","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:09:21.607Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"2","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:09:24.710Z","event":"reservation.order.create.error","ip":"::1","user_id":1,"reservation_id":"2","message":"Table 'samgyup_db.reservation_orders' doesn't exist"}
+{"ts":"2026-04-09T13:10:47.588Z","event":"reservation.order.create","ip":"::1","user_id":1,"email":"jianna_loyola@dlsu.edu.ph","reservation_id":2,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":3}
+{"ts":"2026-04-09T13:11:01.518Z","event":"reservation.order.edit","ip":"::1","user_id":1,"email":"jianna_loyola@dlsu.edu.ph","order_id":1,"reservation_id":2,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":5}
+{"ts":"2026-04-09T15:27:00.451Z","event":"auth.login.success","ip":"::1","email":"jianna_loyola@dlsu.edu.ph","user_id":1,"role":"customer"}

@@ -162,35 +162,53 @@
         `Logged in as ${data.user.full_name} (${data.user.email})`;
     }
 
-    async function loadBranches() {
-      const select = document.getElementById("branch_id");
-      const res = await fetch("/api/branches-active");
-      const data = await res.json();
+     async function loadBranches() {
+        const select = document.getElementById("branch_id");
+        const res = await fetch("/api/branches-active");
+        const data = await res.json();
 
-      if (!res.ok) {
-        select.innerHTML = `<option value="">Unable to load branches</option>`;
+        select.innerHTML = "";
+
+        const defaultOption = document.createElement("option");
+        defaultOption.value = "";
+        defaultOption.textContent = "Select branch";
+        select.appendChild(defaultOption);
+
+        if (!res.ok) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "Unable to load branches";
+        select.appendChild(opt);
         return;
-      }
+        }
 
-      if (!data.branches || !data.branches.length) {
-        select.innerHTML = `<option value="">No active branches available</option>`;
+        if (!data.branches || !data.branches.length) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No active branches available";
+        select.appendChild(opt);
         return;
-      }
+        }
 
-      select.innerHTML = `<option value="">Select branch</option>` +
-        data.branches.map((b) =>
-          `<option value="${b.id}">${escapeHtml(b.name)}${b.location ? " — " + escapeHtml(b.location) : ""}</option>`
-        ).join("");
+        for (const b of data.branches) {
+        const opt = document.createElement("option");
+        opt.value = String(b.id);
+        opt.textContent = b.location ? `${b.name} — ${b.location}` : b.name;
+        select.appendChild(opt);
+        }
     }
 
     async function loadReservations() {
       const res = await fetch("/api/reservations");
       const data = await res.json();
 
-      if (!res.ok) {
-        showError(data.error || "Failed to load reservations.");
-        return;
-      }
+        if (!res.ok) {
+            const msg = data.debug
+                ? `${data.error || "Failed to save reservation."} [DEBUG: ${data.debug}]`
+                : (data.error || "Failed to save reservation.");
+            showError(msg);
+            return;
+        }
 
       reservationsById.clear();
 
@@ -285,8 +303,11 @@
         const data = await res.json();
 
         if (!res.ok) {
-          showError(data.error || "Failed to cancel reservation.");
-          return;
+        const msg = data.debug
+            ? `${data.error || "Failed to cancel reservation."} [DEBUG: ${data.debug}]`
+            : (data.error || "Failed to cancel reservation.");
+        showError(msg);
+        return;
         }
 
         showMessage(data.message);
@@ -303,8 +324,11 @@
         const data = await res.json();
 
         if (!res.ok) {
-          showError(data.error || "Failed to delete reservation.");
-          return;
+        const msg = data.debug
+            ? `${data.error || "Failed to delete reservation."} [DEBUG: ${data.debug}]`
+            : (data.error || "Failed to delete reservation.");
+        showError(msg);
+        return;
         }
 
         showMessage(data.message);

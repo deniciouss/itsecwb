@@ -491,6 +491,112 @@ function isValidOrderText(value) {
   return clean.length >= 1 && clean.length <= 255;
 }
 
+class UserInputError extends Error {
+  constructor(debugMessage, genericMessage = "Invalid input.") {
+    super(debugMessage);
+    this.name = "UserInputError";
+    this.status = 400;
+    this.genericMessage = genericMessage;
+  }
+}
+
+function throwInputError(debugMessage, genericMessage = "Invalid input.") {
+  throw new UserInputError(debugMessage, genericMessage);
+}
+
+function sendUserInputError(res, err) {
+  if (DEBUG_ERRORS) {
+    return res.status(err.status || 400).json({
+      error: err.genericMessage || "Invalid input.",
+      debug: err.message,
+    });
+  }
+
+  return res.status(err.status || 400).json({
+    error: err.genericMessage || "Invalid input.",
+  });
+}
+
+
+
+// Strict blocker for script-like payloads.
+// This is intentionally strict for school/demo security.
+function containsScriptLikeInput(value) {
+  const s = String(value || "");
+
+  return /<\s*\/?\s*script\b|javascript\s*:|vbscript\s*:|data\s*:\s*text\/html|on[a-z]+\s*=|<\s*img\b|<\s*svg\b|<\s*iframe\b|<\s*object\b|<\s*embed\b|&#x?0*3c;|%3c|%3e/i.test(s);
+}
+
+function validatePlainTextField(fieldName, value, opts = {}) {
+  const {
+    min = 0,
+    max = 300,
+    allowEmpty = true,
+  } = opts;
+
+  if (typeof value !== "string") {
+    throwInputError(`${fieldName} must be a string`);
+  }
+
+  const clean = value.trim().replace(/\s+/g, " ");
+
+  if (!allowEmpty && !clean) {
+    throwInputError(`${fieldName} is required`);
+  }
+
+  if (clean.length < min) {
+    throwInputError(`${fieldName} is too short`);
+  }
+
+  if (clean.length > max) {
+    throwInputError(`${fieldName} is too long`);
+  }
+
+  if (containsScriptLikeInput(clean)) {
+    throwInputError(`${fieldName} contains blocked script-like content`);
+  }
+
+  return clean;
+}
+
+function validateFullName(value) {
+  const clean = validatePlainTextField("full_name", value, {
+    min: 2,
+    max: 160,
+    allowEmpty: false,
+  });
+
+  // Letters, spaces, apostrophe, period, hyphen only
+  if (!/^[A-Za-zÀ-ÿ .'-]+$/.test(clean)) {
+    throwInputError("full_name contains invalid characters");
+  }
+
+  return clean;
+}
+
+function validateReservationNote(value) {
+  const clean = validatePlainTextField("reservation_note", value || "", {
+    min: 0,
+    max: 300,
+    allowEmpty: true,
+  });
+
+  // Keep note simple and safe
+  if (clean && !/^[A-Za-z0-9À-ÿ .,'()\-!?#/&:]*$/.test(clean)) {
+    throwInputError("reservation_note contains invalid characters");
+  }
+
+  return clean;
+}
+
+function validateAdminShortText(fieldName, value, max = 255) {
+  return validatePlainTextField(fieldName, value || "", {
+    min: 0,
+    max,
+    allowEmpty: true,
+  });
+}
+
 // ========================================
 // CUSTOMER RESERVATION HELPERS
 // ========================================
@@ -906,7 +1012,11 @@ app.post("/api/admin/announcements", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Message required" });
     }
 
-    const message = req.body.message.trim();
+    const message = validatePlainTextField("announcement", req.body.message, {
+      min: 1,
+      max: 2000,
+      allowEmpty: false,
+    });
     if (!message || message.length > 2000) {
       return res.status(400).json({ error: "Message required (max 2000 chars)" });
     }
@@ -1634,7 +1744,7 @@ app.post("/register", registerLimiter, registerUpload, async (req, res) => {
     const { full_name, email, phone, password, confirm_password } = req.body;
     const captchaToken = req.body["g-recaptcha-response"];
 
-    const cleanName = (full_name || "").trim().replace(/\s+/g, " ");
+    const cleanName = validateFullName(full_name);
     const emailParts = splitEmailParts(email);
     const cleanEmail = emailParts ? emailParts.cleanEmail.toLowerCase() : "";
     const cleanPhone = (phone || "").trim();
@@ -1687,6 +1797,22 @@ app.post("/register", registerLimiter, registerUpload, async (req, res) => {
         ip: req.ip,
         reason: "INVALID_PHONE",
       });
+      return res.redirect("/register?error=1");
+    }
+
+    if (err instanceof UserInputError) {
+      audit("register.failed", {
+        email: req.body?.email ? String(req.body.email).trim().toLowerCase() : undefined,
+        ip: req.ip,
+        reason: err.message,
+      });
+
+      safeUnlink(uploadedFilePath);
+
+      if (DEBUG_ERRORS) {
+        return sendDebugOrGenericError(res, err, "Invalid input.", 400);
+      }
+
       return res.redirect("/register?error=1");
     }
 
@@ -2185,7 +2311,7 @@ app.post("/api/reservations", requireUserApi, async (req, res) => {
     const { branch_id, reservation_note, pax, reservation_date, reservation_time } = req.body;
 
     const branchId = Number(branch_id);
-    const cleanNote = String(reservation_note || "").trim();
+    const cleanNote = validateReservationNote(reservation_note);
     const paxValue = Number(pax);
     const cleanTime = normalizeTimeHHMM(reservation_time);
 
@@ -2214,6 +2340,22 @@ app.post("/api/reservations", requireUserApi, async (req, res) => {
       return res.status(404).json({ error: "Customer profile not found" });
     }
 
+    if (containsScriptLikeInput(String(branch_id || ""))) {
+      throwInputError("branch_id contains blocked script-like content");
+    }
+
+    if (containsScriptLikeInput(String(pax || ""))) {
+      throwInputError("pax contains blocked script-like content");
+    }
+
+    if (containsScriptLikeInput(String(reservation_date || ""))) {
+      throwInputError("reservation_date contains blocked script-like content");
+    }
+
+    if (containsScriptLikeInput(String(reservation_time || ""))) {
+      throwInputError("reservation_time contains blocked script-like content");
+    }
+    
     const branchRow = await findActiveBranchById(branchId);
     if (!branchRow) {
       return res.status(400).json({ error: "Selected branch is unavailable" });
@@ -2422,6 +2564,14 @@ app.post("/api/reservations/:id/edit", requireUserApi, async (req, res) => {
       reservation_end_time: addHoursToTime(cleanTime, RESERVATION_DURATION_HOURS),
     });
   } catch (err) {
+    if (err instanceof UserInputError) {
+    audit("reservation.edit.blocked_input", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      message: err.message,
+    });
+    return sendUserInputError(res, err);
+  }
     audit("reservation.edit.error", {
       ip: req.ip,
       user_id: req.session.user.user_id,
