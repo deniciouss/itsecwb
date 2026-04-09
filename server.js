@@ -1,3 +1,4 @@
+console.log("SERVER FILE LOADED:", __filename);
 // server.js
 
 const express = require("express");
@@ -222,7 +223,7 @@ const registerUpload = (req, res, next) => {
 // ========================================
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 500,
   message: { error: "Too many login attempts. Please try again in 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -469,6 +470,266 @@ async function cleanupLoginAttempts() {
   }
 }
 
+
+// ========================================
+// ADMIN SECURITY (timeout + CSRF + logging)
+// ========================================
+
+const ADMIN_IDLE_TIMEOUT_SEC = Number(process.env.ADMIN_IDLE_TIMEOUT_SEC || 30 * 60); // 30 minutes
+
+function ensureLogDir() {
+  const logDir = path.join(__dirname, "logs");
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  return logDir;
+}
+
+function adminLog(level, message, context = {}) {
+  try {
+    const logDir = ensureLogDir();
+    const ts = new Date().toISOString();
+    const file = path.join(logDir, `admin_${ts.slice(0, 10)}.log`);
+    const line = `[${ts}] [${level}] ${message} ${JSON.stringify(context)}\n`;
+    fs.appendFileSync(file, line);
+  } catch (_) {}
+}
+
+// Admin idle timeout middleware
+function adminSessionTimeout(req, res, next) {
+  const p = req.path || "";
+  const isAdminPath = p.startsWith("/admin") || p.startsWith("/api/admin");
+  if (!isAdminPath) return next();
+
+  if (!req.session || !req.session.admin) return next();
+
+  const now = Date.now();
+  const last = req.session.admin_last_activity || now;
+  const elapsedSec = Math.floor((now - last) / 1000);
+
+  if (elapsedSec > ADMIN_IDLE_TIMEOUT_SEC) {
+    adminLog("INFO", "Admin session timed out", {
+      ip: req.ip,
+      adminEmail: req.session?.admin?.email,
+      idleSeconds: elapsedSec,
+    });
+
+    req.session.destroy(() => {
+      res.clearCookie("sg_admin_sid");
+      return res.redirect("/login");
+    });
+    return;
+  }
+
+  req.session.admin_last_activity = now;
+  next();
+}
+
+app.use(adminSessionTimeout);
+
+// CSRF helpers
+function ensureCsrfToken(req) {
+  if (!req.session) return "";
+  if (!req.session.csrf_token) {
+    req.session.csrf_token = crypto.randomBytes(32).toString("hex");
+  }
+  return req.session.csrf_token;
+}
+
+// Admin CSRF endpoint
+app.get("/api/admin/csrf", requireAdmin, (req, res) => {
+  const token = ensureCsrfToken(req);
+  return res.json({ csrfToken: token });
+});
+
+// CSRF validation middleware (admin POST only)
+function requireCsrf(req, res, next) {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+  if (!(req.path || "").startsWith("/api/admin")) return next();
+
+  const token = req.headers["x-csrf-token"] || req.body.csrf_token;
+  const sessionToken = req.session?.csrf_token;
+
+  if (!token || !sessionToken) {
+    return res.status(403).json({ error: "CSRF validation failed" });
+  }
+
+  const a = String(token);
+  const b = String(sessionToken);
+
+  const ok =
+    a.length === b.length &&
+    crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+  if (!ok) return res.status(403).json({ error: "CSRF validation failed" });
+
+  next();
+}
+
+app.use(requireCsrf);
+
+// ========================================
+// ADMIN-ONLY ACTIONS (MySQL-backed)
+// ========================================
+
+function toIntOrNull(v) {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
+// ---- Announcements ----
+app.get("/api/admin/announcements", requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, message, created_at
+       FROM admin_announcements
+       ORDER BY id DESC
+       LIMIT 25`
+    );
+    return res.json({ announcements: rows });
+  } catch (err) {
+    console.error("[ADMIN] announcements list error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/admin/announcements", requireAdmin, async (req, res) => {
+  try {
+    if (typeof req.body.message !== "string") {
+      return res.status(400).json({ error: "Message required" });
+    }
+
+    const message = req.body.message.trim();
+    if (!message || message.length > 2000) {
+      return res.status(400).json({ error: "Message required (max 2000 chars)" });
+    }
+
+    await pool.execute(
+      `INSERT INTO admin_announcements (message) VALUES (?)`,
+      [message]
+    );
+
+    adminLog("INFO", "Announcement created", {
+      ip: req.ip,
+      adminEmail: req.session?.admin?.email,
+      length: message.length,
+    });
+
+    return res.json({ message: "Announcement saved" });
+  } catch (err) {
+    console.error("[ADMIN] announcements create error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ---- Notes ----
+app.get("/api/admin/notes", requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, note, created_at
+       FROM admin_notes
+       ORDER BY id DESC
+       LIMIT 25`
+    );
+    return res.json({ notes: rows });
+  } catch (err) {
+    console.error("[ADMIN] notes list error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/admin/notes", requireAdmin, async (req, res) => {
+  try {
+    if (typeof req.body.note !== "string") {
+      return res.status(400).json({ error: "Note required" });
+    }
+
+    const note = req.body.note.trim();
+    if (!note || note.length > 2000) {
+      return res.status(400).json({ error: "Note required (max 2000 chars)" });
+    }
+
+    await pool.execute(
+      `INSERT INTO admin_notes (note) VALUES (?)`,
+      [note]
+    );
+
+    adminLog("INFO", "Kitchen note created", {
+      ip: req.ip,
+      adminEmail: req.session?.admin?.email,
+      length: note.length,
+    });
+
+    return res.json({ message: "Note saved" });
+  } catch (err) {
+    console.error("[ADMIN] notes create error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ---- Settings ----
+app.get("/api/admin/settings", requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, max_reservations_per_slot, preparation_time_minutes, updated_at
+       FROM admin_settings
+       WHERE id = 1
+       LIMIT 1`
+    );
+
+    if (rows.length === 0) {
+      await pool.execute(
+        `INSERT INTO admin_settings (id, max_reservations_per_slot, preparation_time_minutes)
+         VALUES (1, 20, 15)`
+      );
+      return res.json({
+        settings: { id: 1, max_reservations_per_slot: 20, preparation_time_minutes: 15 },
+      });
+    }
+
+    return res.json({ settings: rows[0] });
+  } catch (err) {
+    console.error("[ADMIN] settings get error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/admin/settings", requireAdmin, async (req, res) => {
+  try {
+    const maxRes = toIntOrNull(req.body.max_reservations_per_slot);
+    const prepMin = toIntOrNull(req.body.preparation_time_minutes);
+
+    if (maxRes === null || prepMin === null) {
+      return res.status(400).json({ error: "Both numeric fields are required" });
+    }
+    if (maxRes < 1 || maxRes > 500) {
+      return res.status(400).json({ error: "max_reservations_per_slot must be 1..500" });
+    }
+    if (prepMin < 1 || prepMin > 480) {
+      return res.status(400).json({ error: "preparation_time_minutes must be 1..480" });
+    }
+
+    await pool.execute(
+      `UPDATE admin_settings
+       SET max_reservations_per_slot = ?,
+           preparation_time_minutes = ?
+       WHERE id = 1`,
+      [maxRes, prepMin]
+    );
+
+    adminLog("INFO", "Admin settings updated", {
+      ip: req.ip,
+      adminEmail: req.session?.admin?.email,
+      max_reservations_per_slot: maxRes,
+      preparation_time_minutes: prepMin,
+    });
+
+    return res.json({ message: "Settings updated" });
+  } catch (err) {
+    console.error("[ADMIN] settings update error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
 // start cleanup on boot, then every X hours
 cleanupLoginAttempts();
 setInterval(cleanupLoginAttempts, CLEANUP_EVERY_HOURS * 60 * 60 * 1000);
@@ -482,6 +743,154 @@ function requireAdmin(req, res, next) {
   }
   next();
 }
+
+/// ========================================
+// ADMIN-ONLY ACTIONS (MySQL-backed)
+// 1) Announcements (TEXT save + display)
+// 2) Kitchen Notes (TEXT save + display)
+// 3) Settings (NUMERIC inputs: max reservations + prep time)
+// ========================================
+
+console.log("✅ Registering admin-only action routes...");
+
+function toIntOrNull(v) {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
+// ---- Announcements (TEXT) ----
+app.get("/api/admin/announcements", requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, message, created_at
+       FROM admin_announcements
+       ORDER BY id DESC
+       LIMIT 25`
+    );
+    return res.json({ announcements: rows });
+  } catch (err) {
+    console.error("[ADMIN] announcements list error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/admin/announcements", requireAdmin, async (req, res) => {
+  try {
+    const message = String(req.body.message || "").trim();
+    if (!message || message.length > 2000) {
+      return res.status(400).json({ error: "Message required (max 2000 chars)" });
+    }
+
+    await pool.execute(
+      `INSERT INTO admin_announcements (message) VALUES (?)`,
+      [message]
+    );
+
+    return res.json({ message: "Announcement saved" });
+  } catch (err) {
+    console.error("[ADMIN] announcements create error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ---- Notes (TEXT) ----
+app.get("/api/admin/notes", requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, note, created_at
+       FROM admin_notes
+       ORDER BY id DESC
+       LIMIT 25`
+    );
+    return res.json({ notes: rows });
+  } catch (err) {
+    console.error("[ADMIN] notes list error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/admin/notes", requireAdmin, async (req, res) => {
+  try {
+    const note = String(req.body.note || "").trim();
+    if (!note || note.length > 2000) {
+      return res.status(400).json({ error: "Note required (max 2000 chars)" });
+    }
+
+    await pool.execute(
+      `INSERT INTO admin_notes (note) VALUES (?)`,
+      [note]
+    );
+
+    return res.json({ message: "Note saved" });
+  } catch (err) {
+    console.error("[ADMIN] notes create error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ---- Settings (NUMERIC) ----
+app.get("/api/admin/settings", requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, max_reservations_per_slot, preparation_time_minutes, updated_at
+       FROM admin_settings
+       WHERE id = 1
+       LIMIT 1`
+    );
+
+    // Defensive: create row if missing
+    if (rows.length === 0) {
+      await pool.execute(
+        `INSERT INTO admin_settings (id, max_reservations_per_slot, preparation_time_minutes)
+         VALUES (1, 20, 15)`
+      );
+      return res.json({
+        settings: {
+          id: 1,
+          max_reservations_per_slot: 20,
+          preparation_time_minutes: 15,
+        },
+      });
+    }
+
+    return res.json({ settings: rows[0] });
+  } catch (err) {
+    console.error("[ADMIN] settings get error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/admin/settings", requireAdmin, async (req, res) => {
+  try {
+    const maxRes = toIntOrNull(req.body.max_reservations_per_slot);
+    const prepMin = toIntOrNull(req.body.preparation_time_minutes);
+
+    if (maxRes === null || prepMin === null) {
+      return res.status(400).json({ error: "Both numeric fields are required" });
+    }
+    if (maxRes < 1 || maxRes > 500) {
+      return res.status(400).json({ error: "max_reservations_per_slot must be 1..500" });
+    }
+    if (prepMin < 1 || prepMin > 480) {
+      return res.status(400).json({ error: "preparation_time_minutes must be 1..480" });
+    }
+
+    await pool.execute(
+      `UPDATE admin_settings
+       SET max_reservations_per_slot = ?,
+           preparation_time_minutes = ?
+       WHERE id = 1`,
+      [maxRes, prepMin]
+    );
+
+    return res.json({ message: "Settings updated" });
+  } catch (err) {
+    console.error("[ADMIN] settings update error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
 
 /* ------------------ PAGES ------------------ */
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "views", "home.html")));
