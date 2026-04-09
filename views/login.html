@@ -6,7 +6,6 @@
   <title>Login • SamgyupGrill</title>
   <link rel="stylesheet" href="/public/css/theme.css">
 
-  <!-- ✅ Google reCAPTCHA v2 -->
   <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 
@@ -33,10 +32,9 @@
       <div class="form-title">Welcome back</div>
       <div class="form-sub">Sign in to SamgyupGrill</div>
 
-      <!-- Error message -->
       <div id="loginError"
            class="help error"
-           style="display:none; color:var(--ember); padding:12px; background:#fee2e2; border-radius:10px; margin:16px 0;">
+           style="display:none; color:var(--ember); padding:12px; background:#fee2e2; border-radius:10px; margin:16px 0; white-space:pre-wrap; line-height:1.5; font-family:inherit;">
         Login failed
       </div>
 
@@ -57,7 +55,6 @@
           </div>
         </div>
 
-        <!-- Password -->
         <div class="field">
           <div class="label">Password</div>
           <input
@@ -75,7 +72,6 @@
           </div>
         </div>
 
-        <!-- ✅ CAPTCHA required every login -->
         <div class="field">
           <div class="label">Human Check</div>
           <div class="help">Please complete the verification.</div>
@@ -102,9 +98,6 @@
   <footer class="footer">ITSECWB</footer>
 
   <script>
-    // ========================================
-    // TOAST (verify / verified banners)
-    // ========================================
     const params = new URLSearchParams(window.location.search);
 
     function showToast(title, msg) {
@@ -165,9 +158,6 @@
       history.replaceState({}, "", "/login");
     }
 
-    // ========================================
-    // STRICT EMAIL VALIDATION (UX)
-    // ========================================
     function isValidEmail(email) {
       const cleanEmail = (email || "").trim();
 
@@ -194,16 +184,34 @@
       return (el && el.value) ? el.value : "";
     }
 
-    // ========================================
-    // LOGIN FORM HANDLER
-    // ========================================
-    document.getElementById('loginForm').addEventListener('submit', async function(e) {
-      e.preventDefault();
-
+    function hideLoginErrors() {
       document.getElementById('emailError').style.display = 'none';
       document.getElementById('passwordError').style.display = 'none';
       document.getElementById('captchaError').style.display = 'none';
       document.getElementById('loginError').style.display = 'none';
+      document.getElementById('loginError').textContent = 'Login failed';
+    }
+
+    function showLoginError(message) {
+      const box = document.getElementById('loginError');
+      box.textContent = message || "Login failed";
+      box.style.display = 'block';
+    }
+
+    function formatServerError(result, fallbackMessage) {
+      const base = (result && result.error) ? result.error : fallbackMessage;
+
+      if (result && result.stack) {
+        return `${base}\n\n${result.stack}`;
+      }
+
+      return base;
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      hideLoginErrors();
 
       const formData = new FormData(this);
       let email = (formData.get('email') || '').trim();
@@ -235,46 +243,29 @@
         const result = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          // Rate limited
           if (res.status === 429) {
-            document.getElementById('loginError').textContent =
-              "Too many login attempts. Please try again in 15 minutes.";
-          }
-          // Email locked
-          else if (res.status === 423) {
-            document.getElementById('loginError').textContent =
-              "This account is temporarily locked due to too many failed attempts. Please try again later.";
-          }
-          // Other server-provided errors (captcha/verify/etc)
-          else if (result && result.error) {
-            document.getElementById('loginError').textContent = result.error;
-          }
-          // Generic
-          else {
-            document.getElementById('loginError').textContent =
-              "Invalid email/password combination";
+            showLoginError("Too many login attempts. Please try again in 15 minutes.");
+          } else if (res.status === 423) {
+            showLoginError("This account is temporarily locked due to too many failed attempts. Please try again later.");
+          } else if (result && result.error) {
+            showLoginError(formatServerError(result, "Login failed."));
+          } else {
+            showLoginError("Invalid email/password combination");
           }
 
-          document.getElementById('loginError').style.display = 'block';
-
-          // reset captcha for a clean retry
           if (window.grecaptcha) {
             try { grecaptcha.reset(); } catch (_) {}
           }
           return;
         }
 
-        // ✅ ADMIN redirect (session-based)
         if (result.redirectTo) {
           window.location.href = result.redirectTo;
           return;
         }
 
-        // ✅ Normal user login
         if (!result.user || !result.user.user_id) {
-          document.getElementById('loginError').textContent =
-            "Invalid email/password combination";
-          document.getElementById('loginError').style.display = 'block';
+          showLoginError("Invalid email/password combination");
           if (window.grecaptcha) {
             try { grecaptcha.reset(); } catch (_) {}
           }
@@ -288,9 +279,7 @@
         window.location.href = "/welcome";
       } catch (err) {
         console.error("Login error:", err);
-        document.getElementById('loginError').textContent =
-          "Unable to connect. Please try again.";
-        document.getElementById('loginError').style.display = 'block';
+        showLoginError("Unable to connect. Please try again.");
         if (window.grecaptcha) {
           try { grecaptcha.reset(); } catch (_) {}
         }

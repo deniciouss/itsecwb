@@ -1796,9 +1796,14 @@ app.post("/api/login", loginLimiter, async (req, res) => {
         },
       });
     });
-  } catch (err) {
+    } catch (err) {
     console.error("Login error:", err.message);
-    return res.status(500).json({ error: "Server error" });
+    audit("auth.login.error", {
+      ip: req.ip,
+      email: req.body?.email ? String(req.body.email).trim().toLowerCase() : undefined,
+      message: err.message,
+    });
+    return sendApiDebugOrGenericError(res, err, "Server error", 500);
   }
 });
 
@@ -1868,9 +1873,14 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
     ensureCsrfToken(req);
 
     return res.json({ message: "Admin login successful", redirectTo: "/admin/dashboard" });
-  } catch (err) {
+    } catch (err) {
     console.error("Admin login error:", err.message);
-    return res.status(500).json({ error: "Server error" });
+    audit("auth.admin_login.error", {
+      ip: req.ip,
+      email: req.body?.email ? String(req.body.email).trim().toLowerCase() : undefined,
+      message: err.message,
+    });
+    return sendApiDebugOrGenericError(res, err, "Server error", 500);
   }
 });
 
