@@ -1,2 +1,18 @@
 {"ts":"2026-04-08T08:57:11.838Z","event":"register.success","email":"name+tag@gmail.com","ip":"::1","photo_path":"/public/uploads/1775638630517_d1fc4ec53e324d6b73941cb657b2a540.png"}
 {"ts":"2026-04-08T08:57:15.357Z","event":"register.email_sent","email":"name+tag@gmail.com","ip":"::1"}
+{"ts":"2026-04-08T09:34:50.357Z","event":"register.success","email":"jiannaloyola@gmail.com","ip":"::1","photo_path":"/public/uploads/1775640889605_029e822a802071f750cf936d56010ab7.png"}
+{"ts":"2026-04-08T09:34:52.831Z","event":"register.email_sent","email":"jiannaloyola@gmail.com","ip":"::1"}
+{"ts":"2026-04-08T09:37:00.333Z","event":"register.success","email":"jiannagraceloyola@gmail.com","ip":"::1","photo_path":"/public/uploads/1775641019625_70679e03472fee12795686b556317da3.png"}
+{"ts":"2026-04-08T09:37:02.389Z","event":"register.email_sent","email":"jiannagraceloyola@gmail.com","ip":"::1"}
+{"ts":"2026-04-08T09:38:25.639Z","event":"verify_email.success","email":"jiannagraceloyola@gmail.com","ip":"::1","user_id":27}
+{"ts":"2026-04-08T10:20:35.574Z","event":"app.error","ip":"::1","method":"POST","path":"/api/login","message":"Access denied for user 'samgyup_user'@'localhost' (using password: YES)"}
+{"ts":"2026-04-08T10:20:35.614Z","event":"app.error","ip":"::1","method":"GET","path":"/admin/dashboard","message":"Access denied for user 'samgyup_user'@'localhost' (using password: YES)"}
+{"ts":"2026-04-08T10:29:10.193Z","event":"app.error","ip":"::1","method":"GET","path":"/","message":"Access denied for user 'samgyup_user'@'localhost' (using password: YES)"}
+{"ts":"2026-04-08T10:29:13.542Z","event":"app.error","ip":"::1","method":"GET","path":"/","message":"Access denied for user 'samgyup_user'@'localhost' (using password: YES)"}
+{"ts":"2026-04-08T10:29:14.534Z","event":"app.error","ip":"::1","method":"GET","path":"/","message":"Access denied for user 'samgyup_user'@'localhost' (using password: YES)"}
+{"ts":"2026-04-08T10:29:14.684Z","event":"app.error","ip":"::1","method":"GET","path":"/","message":"Access denied for user 'samgyup_user'@'localhost' (using password: YES)"}
+{"ts":"2026-04-08T10:29:14.843Z","event":"app.error","ip":"::1","method":"GET","path":"/","message":"Access denied for user 'samgyup_user'@'localhost' (using password: YES)"}
+{"ts":"2026-04-08T10:29:36.731Z","event":"app.error","ip":"::1","method":"GET","path":"/","message":"Access denied for user 'samgyup_user'@'localhost' (using password: YES)"}
+{"ts":"2026-04-08T10:29:58.439Z","event":"app.error","ip":"::1","method":"GET","path":"/login","message":"Access denied for user 'samgyup_user'@'localhost' (using password: YES)"}
+{"ts":"2026-04-08T10:30:56.091Z","event":"app.error","ip":"::1","method":"GET","path":"/","message":"Access denied for user 'samgyup_user'@'localhost' (using password: YES)"}
+{"ts":"2026-04-08T11:10:38.920Z","event":"verify_email.failed","email":"admin@gmail.com","ip":"::1","reason":"TOKEN_NOT_FOUND"}

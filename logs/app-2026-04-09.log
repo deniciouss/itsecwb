@@ -8,3 +8,8 @@
 {"ts":"2026-04-09T09:14:05.321Z","event":"verify_email.failed","email":"emmanuelandrew.ting@gmail.com","ip":"::1","reason":"TOKEN_NOT_FOUND"}
 {"ts":"2026-04-09T09:18:10.341Z","event":"verify_email.failed","email":"emmanuelandrew.ting@gmail.com","ip":"::1","reason":"TOKEN_NOT_FOUND"}
 {"ts":"2026-04-09T09:19:29.199Z","event":"verify_email.success","email":"emmanuelandrew.ting@gmail.com","ip":"::1","user_id":1}
+{"ts":"2026-04-09T11:04:24.456Z","event":"register.success","email":"jianna_loyola@dlsu.edu.ph","ip":"::1","photo_path":"/public/uploads/1775732663629_920eb4e05046de62a3f0fce2d439decb.png"}
+{"ts":"2026-04-09T11:04:30.471Z","event":"register.email_sent","email":"jianna_loyola@dlsu.edu.ph","ip":"::1"}
+{"ts":"2026-04-09T11:04:58.730Z","event":"verify_email.success","email":"jianna_loyola@dlsu.edu.ph","ip":"::1","user_id":1}
+{"ts":"2026-04-09T11:23:37.334Z","event":"reservation.create","ip":"::1","user_id":1,"email":"jianna_loyola@dlsu.edu.ph","reservation_id":1,"branch_id":1,"branch_name":"BGC","assigned_tables":"1,2","reservation_time":"11:00","reservation_end_time":"13:00"}
+{"ts":"2026-04-09T11:24:49.150Z","event":"reservation.edit","ip":"::1","user_id":1,"email":"jianna_loyola@dlsu.edu.ph","reservation_id":1,"branch_id":1,"branch_name":"BGC","assigned_tables":"1,2","reservation_time":"11:00","reservation_end_time":"13:00"}

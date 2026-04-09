@@ -14,9 +14,9 @@ const crypto = require("crypto");
 const https = require("https");
 const { sendVerificationEmail, verifyTransporter } = require("./mailer");
 
-// Sessions (ADMIN)
+// Sessions (ADMIN / USER)
 const session = require("express-session");
-const mysql2 = require("mysql2"); // callback-based for session store
+const mysql2 = require("mysql2");
 const MySQLStore = require("express-mysql-session")(session);
 
 const app = express();
@@ -36,22 +36,19 @@ const HTTPS_PFX_PATH =
 
 const HTTPS_PFX_PASSWORD = process.env.HTTPS_PFX_PASSWORD || "";
 
-// fetch support (Node 18+ has global fetch; otherwise install node-fetch)
+// fetch support
 const fetchFn = global.fetch
   ? global.fetch
   : (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
-// parse form fields
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
-
-// serve static files
 app.use("/public", express.static(path.join(__dirname, "public")));
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 
-// Simple security headers
+// Basic security headers
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -59,14 +56,14 @@ app.use((req, res, next) => {
   next();
 });
 
-//Block access to logs directory
+// Block logs folder
 app.use("/logs", (req, res) => {
   return res.status(403).send("Forbidden");
 });
 
-// Prevent browser cache for auth-related pages
+// Prevent cache on protected/auth pages
 app.use((req, res, next) => {
-  const noStorePaths = new Set(["/login", "/register", "/welcome"]);
+  const noStorePaths = new Set(["/login", "/register", "/welcome", "/reserve", "/track"]);
   if (noStorePaths.has(req.path) || req.path.startsWith("/admin/")) {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
     res.setHeader("Pragma", "no-cache");
@@ -76,7 +73,7 @@ app.use((req, res, next) => {
 });
 
 // ========================================
-// SIMPLE AUDIT LOGGING
+// LOGGING
 // ========================================
 const logsDir = path.join(__dirname, "logs");
 if (!fs.existsSync(logsDir)) {
@@ -94,18 +91,33 @@ function audit(event, details = {}) {
   delete safe.verify_token_hash;
 
   const filename = path.join(logsDir, `app-${new Date().toISOString().slice(0, 10)}.log`);
-  const line =
-    JSON.stringify({
-      ts: new Date().toISOString(),
-      event,
-      ...safe,
-    }) + "\n";
+  const line = JSON.stringify({
+    ts: new Date().toISOString(),
+    event,
+    ...safe,
+  }) + "\n";
 
   fs.appendFile(filename, line, (err) => {
     if (err) {
       console.error("[AUDIT] write failed:", err.message);
     }
   });
+}
+
+function ensureLogDir() {
+  const logDir = path.join(__dirname, "logs");
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  return logDir;
+}
+
+function adminLog(level, message, context = {}) {
+  try {
+    const logDir = ensureLogDir();
+    const ts = new Date().toISOString();
+    const file = path.join(logDir, `admin_${ts.slice(0, 10)}.log`);
+    const line = `[${ts}] [${level}] ${message} ${JSON.stringify(context)}\n`;
+    fs.appendFileSync(file, line);
+  } catch (_) {}
 }
 
 function sendDebugOrGenericError(res, err, genericMessage = "Server error", status = 500) {
@@ -115,12 +127,21 @@ function sendDebugOrGenericError(res, err, genericMessage = "Server error", stat
       .type("text/plain")
       .send(err && err.stack ? err.stack : String(err || genericMessage));
   }
-
   return res.status(status).send(genericMessage);
 }
 
+function sendApiDebugOrGenericError(res, err, genericMessage = "Server error", status = 500) {
+  if (DEBUG_ERRORS) {
+    return res.status(status).json({
+      error: err.message || genericMessage,
+      stack: err.stack || String(err),
+    });
+  }
+  return res.status(status).json({ error: genericMessage });
+}
+
 // ========================================
-// SESSION STORE (MySQL) for ADMIN
+// SESSION STORE
 // ========================================
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "samgyup_user";
@@ -168,7 +189,7 @@ app.use(
 );
 
 // ========================================
-// FILE UPLOAD SETUP (REGISTER)
+// REGISTER FILE UPLOAD
 // ========================================
 const uploadsDir = path.join(__dirname, "public", "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -178,13 +199,8 @@ if (!fs.existsSync(uploadsDir)) {
   console.log("✅ Uploads directory exists at:", uploadsDir);
 }
 
-const ALLOWED_IMAGE_MIME = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
-
-const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB
+const ALLOWED_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024;
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
@@ -252,7 +268,7 @@ const adminLoginLimiter = rateLimit({
 });
 
 // ========================================
-// VALIDATION FUNCTIONS
+// VALIDATION HELPERS
 // ========================================
 function splitEmailParts(email) {
   const cleanEmail = (email || "").trim();
@@ -374,6 +390,178 @@ function toIntOrNull(v) {
 }
 
 // ========================================
+// CUSTOMER RESERVATION HELPERS
+// ========================================
+const TABLES_PER_BRANCH = 20;
+const SEATS_PER_TABLE = 4;
+const RESERVATION_DURATION_HOURS = 2;
+const OPENING_HOUR = 11;
+const CLOSING_HOUR = 20;
+
+function normalizeTimeHHMM(value) {
+  const match = String(value || "").match(/^(\d{2}):(\d{2})/);
+  if (!match) return null;
+  return `${match[1]}:${match[2]}`;
+}
+
+function isValidReservationText(value, maxLen = 300) {
+  if (value == null) return true;
+  if (typeof value !== "string") return false;
+  return value.trim().length <= maxLen;
+}
+
+function isValidReservationDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+}
+
+function isValidReservationTime(value) {
+  const hhmm = normalizeTimeHHMM(value);
+  return !!hhmm && /^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm);
+}
+
+function timeToMinutes(value) {
+  const hhmm = normalizeTimeHHMM(value);
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function minutesToHHMM(totalMinutes) {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function addHoursToTime(value, hours) {
+  const mins = timeToMinutes(value);
+  if (mins === null) return null;
+  return minutesToHHMM(mins + hours * 60);
+}
+
+function isAllowedReservationStartTime(value) {
+  const mins = timeToMinutes(value);
+  if (mins === null) return false;
+
+  const hour = Math.floor(mins / 60);
+  const minute = mins % 60;
+  const latestStartHour = CLOSING_HOUR - RESERVATION_DURATION_HOURS;
+
+  return minute === 0 && hour >= OPENING_HOUR && hour <= latestStartHour;
+}
+
+function calculateTablesNeeded(pax) {
+  return Math.ceil(Number(pax) / SEATS_PER_TABLE);
+}
+
+function parseAssignedTables(value) {
+  if (!value) return [];
+  return String(value)
+    .split(",")
+    .map((v) => Number(v.trim()))
+    .filter((n) => Number.isInteger(n) && n >= 1 && n <= TABLES_PER_BRANCH);
+}
+
+function formatAssignedTables(tables) {
+  return tables.join(",");
+}
+
+function pickAvailableTables(usedTables, tablesNeeded) {
+  const used = new Set(usedTables);
+  const available = [];
+
+  for (let i = 1; i <= TABLES_PER_BRANCH; i++) {
+    if (!used.has(i)) available.push(i);
+  }
+
+  if (available.length < tablesNeeded) return null;
+  return available.slice(0, tablesNeeded);
+}
+
+function reservationTimesOverlap(existingStart, requestedStart) {
+  const aStart = timeToMinutes(existingStart);
+  const bStart = timeToMinutes(requestedStart);
+
+  if (aStart === null || bStart === null) return false;
+
+  const aEnd = aStart + RESERVATION_DURATION_HOURS * 60;
+  const bEnd = bStart + RESERVATION_DURATION_HOURS * 60;
+
+  return aStart < bEnd && bStart < aEnd;
+}
+
+async function getCurrentCustomerProfile(userId) {
+  const [rows] = await pool.execute(
+    `SELECT id, full_name, email, phone
+     FROM users
+     WHERE id = ?
+     LIMIT 1`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
+async function findActiveBranchById(branchId) {
+  const [rows] = await pool.execute(
+    `SELECT id, name, is_active
+     FROM branches
+     WHERE id = ?
+     LIMIT 1`,
+    [branchId]
+  );
+
+  if (rows.length === 0) return null;
+  const branch = rows[0];
+  if (Number(branch.is_active) !== 1) return null;
+  return branch;
+}
+
+async function getUsedTablesForSlot(branchId, reservationDate, requestedTime, excludeReservationId = null) {
+  let sql = `
+    SELECT assigned_tables, reservation_time
+    FROM reservations
+    WHERE branch_id = ?
+      AND reservation_date = ?
+      AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'approved')
+  `;
+  const params = [branchId, reservationDate];
+
+  if (excludeReservationId) {
+    sql += ` AND id <> ?`;
+    params.push(excludeReservationId);
+  }
+
+  const [rows] = await pool.execute(sql, params);
+
+  const used = [];
+  for (const row of rows) {
+    if (!reservationTimesOverlap(row.reservation_time, requestedTime)) continue;
+    used.push(...parseAssignedTables(row.assigned_tables));
+  }
+
+  return used;
+}
+
+async function hasDuplicateActiveReservation(userId, branchId, reservationDate, requestedTime, excludeReservationId = null) {
+  let sql = `
+    SELECT id, reservation_time
+    FROM reservations
+    WHERE user_id = ?
+      AND branch_id = ?
+      AND reservation_date = ?
+      AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'approved')
+  `;
+  const params = [userId, branchId, reservationDate];
+
+  if (excludeReservationId) {
+    sql += ` AND id <> ?`;
+    params.push(excludeReservationId);
+  }
+
+  const [rows] = await pool.execute(sql, params);
+  return rows.some((row) => reservationTimesOverlap(row.reservation_time, requestedTime));
+}
+
+// ========================================
 // GOOGLE reCAPTCHA v2 verification
 // ========================================
 async function verifyRecaptchaV2(token, ip) {
@@ -491,22 +679,6 @@ async function cleanupLoginAttempts() {
 // ========================================
 const ADMIN_IDLE_TIMEOUT_SEC = Number(process.env.ADMIN_IDLE_TIMEOUT_SEC || 30 * 60);
 
-function ensureLogDir() {
-  const logDir = path.join(__dirname, "logs");
-  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-  return logDir;
-}
-
-function adminLog(level, message, context = {}) {
-  try {
-    const logDir = ensureLogDir();
-    const ts = new Date().toISOString();
-    const file = path.join(logDir, `admin_${ts.slice(0, 10)}.log`);
-    const line = `[${ts}] [${level}] ${message} ${JSON.stringify(context)}\n`;
-    fs.appendFileSync(file, line);
-  } catch (_) {}
-}
-
 function requireAdmin(req, res, next) {
   if (!req.session || !req.session.admin) {
     if ((req.path || "").startsWith("/api/")) {
@@ -517,10 +689,25 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function requireUserPage(req, res, next) {
+  if (!req.session || !req.session.user) {
+    return res.redirect("/login");
+  }
+  next();
+}
+
+function requireUserApi(req, res, next) {
+  if (!req.session || !req.session.user) {
+    return res.status(401).json({ error: "Session expired or not logged in" });
+  }
+  next();
+}
+
 function adminSessionTimeout(req, res, next) {
   const p = req.path || "";
   const isAdminPath = p.startsWith("/admin") || p.startsWith("/api/admin");
   if (!isAdminPath) return next();
+  if (p === "/api/admin/login") return next();
 
   if (!req.session || !req.session.admin) return next();
 
@@ -567,6 +754,7 @@ app.get("/api/admin/csrf", requireAdmin, (req, res) => {
 function requireCsrf(req, res, next) {
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
   if (!(req.path || "").startsWith("/api/admin")) return next();
+  if (req.path === "/api/admin/login") return next();
 
   const token = req.headers["x-csrf-token"] || req.body.csrf_token;
   const sessionToken = req.session?.csrf_token;
@@ -676,7 +864,7 @@ app.post("/api/admin/notes", requireAdmin, async (req, res) => {
       ip: req.ip,
       adminEmail: req.session?.admin?.email,
       length: note.length,
-      preview: note.slice(0, 80), 
+      preview: note.slice(0, 80),
     });
 
     return res.json({ message: "Note saved" });
@@ -781,8 +969,8 @@ app.post("/api/admin/settings", requireAdmin, async (req, res) => {
       adminEmail: req.session?.admin?.email,
       max_reservations_per_slot: maxRes,
       preparation_time_minutes: prepMin,
-      max_reservations_per_slot: maxRes,
-      preparation_time_minutes: prepMin,
+      dine_in_time_limit_minutes: dineLimit,
+      grace_period_minutes: graceMin,
     });
 
     return res.json({ message: "Settings updated" });
@@ -845,7 +1033,7 @@ app.post("/api/admin/branches", requireAdmin, async (req, res) => {
       ip: req.ip,
       adminEmail: req.session?.admin?.email,
       branch_name: name,
-      location
+      location,
     });
 
     return res.json({ message: "Branch added successfully" });
@@ -890,7 +1078,7 @@ app.post("/api/admin/branches/:id/toggle", requireAdmin, async (req, res) => {
       adminEmail: req.session?.admin?.email,
       branch_id: branchId,
       branch_name: branch.name,
-      is_active: newStatus
+      is_active: newStatus,
     });
 
     return res.json({
@@ -898,6 +1086,23 @@ app.post("/api/admin/branches/:id/toggle", requireAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error("[ADMIN] branch toggle error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// public active branches for customer reserve page
+app.get("/api/branches-active", async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, name, location, operating_hours
+       FROM branches
+       WHERE is_active = 1
+       ORDER BY name ASC`
+    );
+
+    return res.json({ branches: rows });
+  } catch (err) {
+    console.error("[PUBLIC] active branches list error:", err);
     return res.status(500).json({ error: "Server error" });
   }
 });
@@ -956,7 +1161,7 @@ app.post("/api/admin/menu-items", requireAdmin, async (req, res) => {
       adminEmail: req.session?.admin?.email,
       item_name: name,
       category,
-      price: Number(price.toFixed(2))
+      price: Number(price.toFixed(2)),
     });
 
     return res.json({ message: "Menu item added successfully" });
@@ -1001,7 +1206,7 @@ app.post("/api/admin/menu-items/:id/toggle", requireAdmin, async (req, res) => {
       adminEmail: req.session?.admin?.email,
       item_id: itemId,
       item_name: item.name,
-      is_available: newStatus
+      is_available: newStatus,
     });
 
     return res.json({
@@ -1013,12 +1218,13 @@ app.post("/api/admin/menu-items/:id/toggle", requireAdmin, async (req, res) => {
   }
 });
 
-// ---- Reservations ----
+// ---- Admin Reservations ----
 app.get("/api/admin/reservations", requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.execute(
       `SELECT
          r.id,
+         r.user_id,
          r.full_name,
          r.email,
          r.phone,
@@ -1028,6 +1234,9 @@ app.get("/api/admin/reservations", requireAdmin, async (req, res) => {
          r.branch_id,
          r.status,
          r.admin_notes,
+         r.reservation_note,
+         r.tables_needed,
+         r.assigned_tables,
          r.created_at,
          r.admin_updated_at,
          b.name AS branch_name
@@ -1047,7 +1256,7 @@ app.get("/api/admin/reservations", requireAdmin, async (req, res) => {
 app.post("/api/admin/reservations/:id/status", requireAdmin, async (req, res) => {
   try {
     const reservationId = Number(req.params.id);
-    const status = String(req.body.status || "").trim();
+    const status = String(req.body.status || "").trim().toLowerCase();
     const adminNotes = String(req.body.admin_notes || "").trim();
 
     const allowedStatuses = new Set([
@@ -1055,7 +1264,8 @@ app.post("/api/admin/reservations/:id/status", requireAdmin, async (req, res) =>
       "rejected",
       "completed",
       "no_show",
-      "cancelled"
+      "cancelled",
+      "pending"
     ]);
 
     if (!Number.isInteger(reservationId) || reservationId <= 0) {
@@ -1097,7 +1307,7 @@ app.post("/api/admin/reservations/:id/status", requireAdmin, async (req, res) =>
       reservation_id: reservationId,
       customer_name: rows[0].full_name,
       customer_email: rows[0].email,
-      new_status: status
+      new_status: status,
     });
 
     return res.json({ message: "Reservation updated successfully" });
@@ -1132,16 +1342,51 @@ app.get("/api/admin/me", (req, res) => {
 });
 
 app.post("/api/admin/logout", (req, res) => {
+  const adminEmail = req.session?.admin?.email || null;
   req.session.destroy(() => {
     res.clearCookie("id", { path: "/" });
+    audit("auth.admin_logout", {
+      email: adminEmail,
+      ip: req.ip,
+    });
+    adminLog("INFO", "Admin logged out", {
+      ip: req.ip,
+      adminEmail,
+    });
     return res.json({ message: "Logged out" });
   });
 });
 
-app.get("/branches", (req, res) => res.send("Branches page UI next"));
-app.get("/menu", (req, res) => res.send("Menu/Order UI next"));
-app.get("/reserve", (req, res) => res.send("Reserve UI next"));
-app.get("/track", (req, res) => res.send("Track UI next"));
+app.get("/branches", (req, res) => res.sendFile(path.join(__dirname, "views", "branches.html")));
+app.get("/menu", (req, res) => res.sendFile(path.join(__dirname, "views", "menu.html")));
+app.get("/reserve", requireUserPage, (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "reserve.html"));
+});
+app.get("/track", requireUserPage, (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "track.html"));
+});
+
+app.get("/api/me", (req, res) => {
+  if (req.session?.admin) {
+    return res.json({ role: "admin", user: req.session.admin });
+  }
+  if (req.session?.user) {
+    return res.json({ role: "customer", user: req.session.user });
+  }
+  return res.status(401).json({ error: "Not logged in" });
+});
+
+app.post("/api/logout", (req, res) => {
+  const userEmail = req.session?.user?.email || null;
+  req.session.destroy(() => {
+    res.clearCookie("id", { path: "/" });
+    audit("auth.logout", {
+      email: userEmail,
+      ip: req.ip,
+    });
+    return res.json({ message: "Logged out" });
+  });
+});
 
 /* ------------------ EMAIL VERIFICATION ------------------ */
 app.get("/test-email", async (req, res) => {
@@ -1474,6 +1719,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
     await clearLoginAttempts(email);
 
     if (user.role === "admin") {
+      delete req.session.user;
       req.session.admin = {
         user_id: user.user_id,
         full_name: user.full_name,
@@ -1489,15 +1735,26 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       });
     }
 
-    return res.json({
-      message: "Login successful",
-      user: {
-        user_id: user.user_id,
-        full_name: user.full_name,
-        email: user.email,
-        phone: user.phone,
-        photo_path: user.photo_path,
-      },
+    delete req.session.admin;
+    req.session.user = {
+      user_id: user.user_id,
+      full_name: user.full_name,
+      email: user.email,
+      role: user.role || "customer",
+    };
+
+    return req.session.save(() => {
+      return res.json({
+        message: "Login successful",
+        redirectTo: "/reserve",
+        user: {
+          user_id: user.user_id,
+          full_name: user.full_name,
+          email: user.email,
+          phone: user.phone,
+          photo_path: user.photo_path,
+        },
+      });
     });
   } catch (err) {
     console.error("Login error:", err.message);
@@ -1560,6 +1817,7 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
 
     await clearLoginAttempts(email);
 
+    delete req.session.user;
     req.session.admin = {
       user_id: user.id,
       full_name: user.full_name,
@@ -1572,6 +1830,376 @@ app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
     return res.json({ message: "Admin login successful", redirectTo: "/admin/dashboard" });
   } catch (err) {
     console.error("Admin login error:", err.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ========================================
+// CUSTOMER RESERVATION ACTIONS
+// ========================================
+app.get("/api/reservations", requireUserApi, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT
+         r.id,
+         r.branch_id,
+         b.name AS branch,
+         r.reservation_note,
+         r.guests_count AS pax,
+         r.tables_needed,
+         r.assigned_tables,
+         r.reservation_date,
+         r.reservation_time,
+         r.status,
+         r.created_at,
+         r.admin_updated_at AS updated_at
+       FROM reservations r
+       LEFT JOIN branches b ON r.branch_id = b.id
+       WHERE r.user_id = ?
+       ORDER BY r.created_at DESC`,
+      [req.session.user.user_id]
+    );
+
+    const reservations = rows.map((row) => ({
+      ...row,
+      reservation_time: normalizeTimeHHMM(row.reservation_time) || row.reservation_time,
+      reservation_end_time: addHoursToTime(row.reservation_time, RESERVATION_DURATION_HOURS),
+    }));
+
+    return res.json({ reservations });
+  } catch (err) {
+    audit("reservation.list.error", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      message: err.message,
+    });
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/reservations", requireUserApi, async (req, res) => {
+  try {
+    const { branch_id, reservation_note, pax, reservation_date, reservation_time } = req.body;
+
+    const branchId = Number(branch_id);
+    const cleanNote = String(reservation_note || "").trim();
+    const paxValue = Number(pax);
+    const cleanTime = normalizeTimeHHMM(reservation_time);
+
+    if (!Number.isInteger(branchId) || branchId <= 0) {
+      return res.status(400).json({ error: "Branch is required" });
+    }
+
+    if (!isValidReservationText(cleanNote, 300)) {
+      return res.status(400).json({ error: "Invalid reservation note" });
+    }
+
+    if (!Number.isInteger(paxValue) || paxValue < 1 || paxValue > 80) {
+      return res.status(400).json({ error: "Invalid pax" });
+    }
+
+    if (!isValidReservationDate(reservation_date)) {
+      return res.status(400).json({ error: "Invalid reservation date" });
+    }
+
+    if (!cleanTime || !isAllowedReservationStartTime(cleanTime)) {
+      return res.status(400).json({ error: "Reservation must start hourly between 11:00 and 18:00" });
+    }
+
+    const customer = await getCurrentCustomerProfile(req.session.user.user_id);
+    if (!customer) {
+      return res.status(404).json({ error: "Customer profile not found" });
+    }
+
+    const branchRow = await findActiveBranchById(branchId);
+    if (!branchRow) {
+      return res.status(400).json({ error: "Selected branch is unavailable" });
+    }
+
+    const tablesNeeded = calculateTablesNeeded(paxValue);
+    if (tablesNeeded > TABLES_PER_BRANCH) {
+      return res.status(400).json({ error: "Pax exceeds branch capacity" });
+    }
+
+    const duplicate = await hasDuplicateActiveReservation(
+      req.session.user.user_id,
+      branchId,
+      reservation_date,
+      cleanTime
+    );
+
+    if (duplicate) {
+      return res.status(409).json({
+        error: "You already have an overlapping reservation for this branch"
+      });
+    }
+
+    const usedTables = await getUsedTablesForSlot(branchId, reservation_date, cleanTime);
+    const assignedTables = pickAvailableTables(usedTables, tablesNeeded);
+
+    if (!assignedTables) {
+      return res.status(409).json({
+        error: "No available tables for this branch and time slot"
+      });
+    }
+
+    const assignedTablesText = formatAssignedTables(assignedTables);
+
+    const [result] = await pool.execute(
+      `INSERT INTO reservations
+        (user_id, full_name, email, phone, reservation_date, reservation_time, guests_count, branch_id, status, reservation_note, tables_needed, assigned_tables)
+       VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      [
+        customer.id,
+        customer.full_name,
+        customer.email,
+        customer.phone,
+        reservation_date,
+        cleanTime,
+        paxValue,
+        branchId,
+        cleanNote,
+        tablesNeeded,
+        assignedTablesText,
+      ]
+    );
+
+    audit("reservation.create", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      email: req.session.user.email,
+      reservation_id: result.insertId,
+      branch_id: branchRow.id,
+      branch_name: branchRow.name,
+      assigned_tables: assignedTablesText,
+      reservation_time: cleanTime,
+      reservation_end_time: addHoursToTime(cleanTime, RESERVATION_DURATION_HOURS),
+    });
+
+    return res.json({
+      message: "Reservation created successfully",
+      assigned_tables: assignedTablesText,
+      reservation_end_time: addHoursToTime(cleanTime, RESERVATION_DURATION_HOURS),
+    });
+  } catch (err) {
+    audit("reservation.create.error", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      message: err.message,
+    });
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/reservations/:id/edit", requireUserApi, async (req, res) => {
+  try {
+    const reservationId = Number(req.params.id);
+    const { branch_id, reservation_note, pax, reservation_date, reservation_time } = req.body;
+
+    if (!Number.isInteger(reservationId) || reservationId <= 0) {
+      return res.status(400).json({ error: "Invalid reservation id" });
+    }
+
+    const branchId = Number(branch_id);
+    const cleanNote = String(reservation_note || "").trim();
+    const paxValue = Number(pax);
+    const cleanTime = normalizeTimeHHMM(reservation_time);
+
+    if (!Number.isInteger(branchId) || branchId <= 0) {
+      return res.status(400).json({ error: "Branch is required" });
+    }
+
+    if (!isValidReservationText(cleanNote, 300)) {
+      return res.status(400).json({ error: "Invalid reservation note" });
+    }
+
+    if (!Number.isInteger(paxValue) || paxValue < 1 || paxValue > 80) {
+      return res.status(400).json({ error: "Invalid pax" });
+    }
+
+    if (!isValidReservationDate(reservation_date)) {
+      return res.status(400).json({ error: "Invalid reservation date" });
+    }
+
+    if (!cleanTime || !isAllowedReservationStartTime(cleanTime)) {
+      return res.status(400).json({ error: "Reservation must start hourly between 11:00 and 18:00" });
+    }
+
+    const customer = await getCurrentCustomerProfile(req.session.user.user_id);
+    if (!customer) {
+      return res.status(404).json({ error: "Customer profile not found" });
+    }
+
+    const branchRow = await findActiveBranchById(branchId);
+    if (!branchRow) {
+      return res.status(400).json({ error: "Selected branch is unavailable" });
+    }
+
+    const tablesNeeded = calculateTablesNeeded(paxValue);
+    if (tablesNeeded > TABLES_PER_BRANCH) {
+      return res.status(400).json({ error: "Pax exceeds branch capacity" });
+    }
+
+    const duplicate = await hasDuplicateActiveReservation(
+      req.session.user.user_id,
+      branchId,
+      reservation_date,
+      cleanTime,
+      reservationId
+    );
+
+    if (duplicate) {
+      return res.status(409).json({
+        error: "You already have an overlapping reservation for this branch"
+      });
+    }
+
+    const usedTables = await getUsedTablesForSlot(branchId, reservation_date, cleanTime, reservationId);
+    const assignedTables = pickAvailableTables(usedTables, tablesNeeded);
+
+    if (!assignedTables) {
+      return res.status(409).json({
+        error: "No available tables for this branch and time slot"
+      });
+    }
+
+    const assignedTablesText = formatAssignedTables(assignedTables);
+
+    const [result] = await pool.execute(
+      `UPDATE reservations
+       SET full_name = ?,
+           email = ?,
+           phone = ?,
+           reservation_date = ?,
+           reservation_time = ?,
+           guests_count = ?,
+           branch_id = ?,
+           reservation_note = ?,
+           tables_needed = ?,
+           assigned_tables = ?
+       WHERE id = ?
+         AND user_id = ?
+         AND LOWER(COALESCE(status, 'pending')) <> 'cancelled'`,
+      [
+        customer.full_name,
+        customer.email,
+        customer.phone,
+        reservation_date,
+        cleanTime,
+        paxValue,
+        branchId,
+        cleanNote,
+        tablesNeeded,
+        assignedTablesText,
+        reservationId,
+        req.session.user.user_id,
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Reservation not found or cannot be edited" });
+    }
+
+    audit("reservation.edit", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      email: req.session.user.email,
+      reservation_id: reservationId,
+      branch_id: branchRow.id,
+      branch_name: branchRow.name,
+      assigned_tables: assignedTablesText,
+      reservation_time: cleanTime,
+      reservation_end_time: addHoursToTime(cleanTime, RESERVATION_DURATION_HOURS),
+    });
+
+    return res.json({
+      message: "Reservation updated successfully",
+      assigned_tables: assignedTablesText,
+      reservation_end_time: addHoursToTime(cleanTime, RESERVATION_DURATION_HOURS),
+    });
+  } catch (err) {
+    audit("reservation.edit.error", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      message: err.message,
+    });
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/reservations/:id/cancel", requireUserApi, async (req, res) => {
+  try {
+    const reservationId = Number(req.params.id);
+
+    if (!Number.isInteger(reservationId) || reservationId <= 0) {
+      return res.status(400).json({ error: "Invalid reservation id" });
+    }
+
+    const [result] = await pool.execute(
+      `UPDATE reservations
+       SET status = 'cancelled',
+           admin_updated_at = NOW()
+       WHERE id = ?
+         AND user_id = ?`,
+      [reservationId, req.session.user.user_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Reservation not found" });
+    }
+
+    audit("reservation.cancel", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      email: req.session.user.email,
+      reservation_id: reservationId,
+    });
+
+    return res.json({ message: "Reservation cancelled successfully" });
+  } catch (err) {
+    audit("reservation.cancel.error", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      message: err.message,
+    });
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/reservations/:id/delete", requireUserApi, async (req, res) => {
+  try {
+    const reservationId = Number(req.params.id);
+
+    if (!Number.isInteger(reservationId) || reservationId <= 0) {
+      return res.status(400).json({ error: "Invalid reservation id" });
+    }
+
+    const [result] = await pool.execute(
+      `DELETE FROM reservations
+       WHERE id = ?
+         AND user_id = ?`,
+      [reservationId, req.session.user.user_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Reservation not found" });
+    }
+
+    audit("reservation.delete", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      email: req.session.user.email,
+      reservation_id: reservationId,
+    });
+
+    return res.json({ message: "Reservation deleted successfully" });
+  } catch (err) {
+    audit("reservation.delete.error", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      message: err.message,
+    });
     return res.status(500).json({ error: "Server error" });
   }
 });

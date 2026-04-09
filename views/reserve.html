@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Reserve • SamgyupGrill</title>
+  <link rel="stylesheet" href="/public/css/theme.css">
+</head>
+<body class="grill-bg">
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/">
+        <div class="logo"></div>
+        <div>Samgyup<span style="color:var(--ember)">Grill</span></div>
+      </a>
+      <nav class="nav-links">
+        <a href="/branches">Branches</a>
+        <a href="/menu">Menu</a>
+        <a href="/reserve">Reserve</a>
+        <a href="/track">Track</a>
+        <button class="btn btn-ghost" id="logoutBtn" type="button">Logout</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card card-pad" style="margin-bottom:20px;">
+      <div class="form-title">Reserve a table</div>
+      <div class="form-sub">
+        Reservations start hourly only and last for 2 hours automatically.
+      </div>
+
+      <div id="userInfo" class="help" style="margin-top:10px;"></div>
+      <div id="reserveMessage" class="help" style="display:none; margin-top:10px; color:var(--ember); font-weight:700;"></div>
+      <div id="reserveError" class="help error" style="display:none; margin-top:10px; color:var(--ember);"></div>
+
+      <form class="form" id="reservationForm" style="margin-top:18px;">
+        <input type="hidden" id="reservationId" value="">
+
+        <div class="field">
+          <div class="label">Branch</div>
+          <select class="input" id="branch_id" required>
+            <option value="">Loading branches...</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <div class="label">Reservation Note</div>
+          <textarea
+            class="input"
+            id="reservation_note"
+            rows="4"
+            maxlength="300"
+            placeholder="Window seat, birthday setup, or special request (optional)"
+          ></textarea>
+        </div>
+
+        <div class="field">
+          <div class="label">Pax</div>
+          <input class="input" id="pax" type="number" min="1" max="80" required />
+          <div class="help">1–4 pax = 1 table, 5–8 pax = 2 tables, and so on.</div>
+        </div>
+
+        <div class="field">
+          <div class="label">Reservation Date</div>
+          <input class="input" id="reservation_date" type="date" required />
+        </div>
+
+        <div class="field">
+          <div class="label">Reservation Time</div>
+          <select class="input" id="reservation_time" required>
+            <option value="">Select time</option>
+            <option value="11:00">11:00 AM – 1:00 PM</option>
+            <option value="12:00">12:00 PM – 2:00 PM</option>
+            <option value="13:00">1:00 PM – 3:00 PM</option>
+            <option value="14:00">2:00 PM – 4:00 PM</option>
+            <option value="15:00">3:00 PM – 5:00 PM</option>
+            <option value="16:00">4:00 PM – 6:00 PM</option>
+            <option value="17:00">5:00 PM – 7:00 PM</option>
+            <option value="18:00">6:00 PM – 8:00 PM</option>
+          </select>
+          <div class="help">Hourly starts only. Every reservation lasts 2 hours.</div>
+        </div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-primary" type="submit">Save Reservation</button>
+          <button class="btn btn-ghost" type="button" id="cancelEditBtn">Cancel Edit</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card card-pad">
+      <div class="form-title">My Reservations</div>
+      <div class="form-sub">Tables are auto-assigned by the system.</div>
+      <div id="reservationList" style="margin-top:18px;"></div>
+    </section>
+  </main>
+
+  <footer class="footer">ITSECWB</footer>
+
+  <script>
+    const messageEl = document.getElementById("reserveMessage");
+    const errorEl = document.getElementById("reserveError");
+    const listEl = document.getElementById("reservationList");
+    const form = document.getElementById("reservationForm");
+    const reservationsById = new Map();
+
+    function showMessage(text) {
+      messageEl.textContent = text;
+      messageEl.style.display = "block";
+      errorEl.style.display = "none";
+    }
+
+    function showError(text) {
+      errorEl.textContent = text;
+      errorEl.style.display = "block";
+      messageEl.style.display = "none";
+    }
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function formatDate(value) {
+      return String(value || "").slice(0, 10);
+    }
+
+    function formatTime(value) {
+      return String(value || "").slice(0, 5);
+    }
+
+    function addTwoHours(timeStr) {
+      const parts = String(timeStr || "").split(":");
+      if (parts.length < 2) return "";
+      const h = Number(parts[0]);
+      const m = Number(parts[1]);
+      const total = h * 60 + m + 120;
+      const endH = Math.floor(total / 60);
+      const endM = total % 60;
+      return `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+    }
+
+    async function loadMe() {
+      const res = await fetch("/api/me");
+      if (!res.ok) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const data = await res.json();
+      if (!data.user || data.role !== "customer") {
+        window.location.href = "/login";
+        return;
+      }
+
+      document.getElementById("userInfo").textContent =
+        `Logged in as ${data.user.full_name} (${data.user.email})`;
+    }
+
+    async function loadBranches() {
+      const select = document.getElementById("branch_id");
+      const res = await fetch("/api/branches-active");
+      const data = await res.json();
+
+      if (!res.ok) {
+        select.innerHTML = `<option value="">Unable to load branches</option>`;
+        return;
+      }
+
+      if (!data.branches || !data.branches.length) {
+        select.innerHTML = `<option value="">No active branches available</option>`;
+        return;
+      }
+
+      select.innerHTML = `<option value="">Select branch</option>` +
+        data.branches.map((b) =>
+          `<option value="${b.id}">${escapeHtml(b.name)}${b.location ? " — " + escapeHtml(b.location) : ""}</option>`
+        ).join("");
+    }
+
+    async function loadReservations() {
+      const res = await fetch("/api/reservations");
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || "Failed to load reservations.");
+        return;
+      }
+
+      reservationsById.clear();
+
+      if (!data.reservations.length) {
+        listEl.innerHTML = `<div class="help">No reservations yet.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = data.reservations.map((r) => {
+        reservationsById.set(String(r.id), r);
+
+        const startTime = formatTime(r.reservation_time);
+        const endTime = formatTime(r.reservation_end_time || addTwoHours(r.reservation_time));
+
+        return `
+          <div class="card" style="padding:16px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+              <div>
+                <div style="font-weight:900; font-size:18px;">
+                  ${escapeHtml(r.branch || "Unknown Branch")} • ${escapeHtml(r.status)}
+                </div>
+                <div class="help">
+                  Date: ${escapeHtml(formatDate(r.reservation_date))} • Time: ${escapeHtml(startTime)} - ${escapeHtml(endTime)}
+                </div>
+                <div class="help">
+                  Pax: ${escapeHtml(r.pax)} • Tables Needed: ${escapeHtml(r.tables_needed)}
+                </div>
+                <div class="help">
+                  Assigned Tables: ${escapeHtml(r.assigned_tables || "Not assigned")}
+                </div>
+                <div class="help">
+                  Note: ${escapeHtml(r.reservation_note || "None")}
+                </div>
+              </div>
+
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button class="btn btn-ghost" data-action="edit" data-id="${r.id}">Edit</button>
+                <button class="btn btn-ghost" data-action="cancel" data-id="${r.id}">Cancel</button>
+                <button class="btn btn-ghost" data-action="delete" data-id="${r.id}">Delete</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function refillBranchSelectionByName(branchName) {
+      const select = document.getElementById("branch_id");
+      if (!branchName) return;
+
+      for (const option of select.options) {
+        if (option.text.startsWith(branchName)) {
+          select.value = option.value;
+          return;
+        }
+      }
+    }
+
+    async function startEdit(r) {
+      document.getElementById("reservationId").value = r.id;
+      document.getElementById("reservation_note").value = r.reservation_note || "";
+      document.getElementById("pax").value = r.pax;
+      document.getElementById("reservation_date").value = formatDate(r.reservation_date);
+      document.getElementById("reservation_time").value = formatTime(r.reservation_time);
+
+      await refillBranchSelectionByName(r.branch);
+
+      showMessage("Editing reservation.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    listEl.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+
+      const id = btn.dataset.id;
+      const action = btn.dataset.action;
+      const reservation = reservationsById.get(String(id));
+      if (!reservation) return;
+
+      if (action === "edit") {
+        await startEdit(reservation);
+        return;
+      }
+
+      if (action === "cancel") {
+        if (!confirm("Cancel this reservation?")) return;
+
+        const res = await fetch(`/api/reservations/${id}/cancel`, {
+          method: "POST"
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error || "Failed to cancel reservation.");
+          return;
+        }
+
+        showMessage(data.message);
+        loadReservations();
+        return;
+      }
+
+      if (action === "delete") {
+        if (!confirm("Delete this reservation permanently?")) return;
+
+        const res = await fetch(`/api/reservations/${id}/delete`, {
+          method: "POST"
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error || "Failed to delete reservation.");
+          return;
+        }
+
+        showMessage(data.message);
+        loadReservations();
+      }
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const reservationId = document.getElementById("reservationId").value;
+      const payload = {
+        branch_id: Number(document.getElementById("branch_id").value),
+        reservation_note: document.getElementById("reservation_note").value,
+        pax: Number(document.getElementById("pax").value),
+        reservation_date: document.getElementById("reservation_date").value,
+        reservation_time: document.getElementById("reservation_time").value,
+      };
+
+      const url = reservationId
+        ? `/api/reservations/${reservationId}/edit`
+        : `/api/reservations`;
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || "Failed to save reservation.");
+        return;
+      }
+
+      form.reset();
+      document.getElementById("reservationId").value = "";
+      showMessage(data.message);
+      loadReservations();
+    });
+
+    document.getElementById("cancelEditBtn").addEventListener("click", () => {
+      form.reset();
+      document.getElementById("reservationId").value = "";
+      showMessage("Edit cancelled.");
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      await fetch("/api/logout", { method: "POST" });
+      window.location.href = "/login";
+    });
+
+    (async function init() {
+      await loadMe();
+      await loadBranches();
+      await loadReservations();
+    })();
+  </script>
+</body>
+</html>
