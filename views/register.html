@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Register • SamgyupGrill</title>
   <link rel="stylesheet" href="/public/css/theme.css">
-
-  <!-- ✅ Google reCAPTCHA v2 script -->
   <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 
@@ -33,7 +31,6 @@
       <div class="form-title">Create your account</div>
       <div class="form-sub">Register to reserve a table, order, and track your requests.</div>
 
-      <!-- ✅ Generic error message (anti-enumeration) -->
       <div
         id="genericError"
         class="alert"
@@ -47,29 +44,35 @@
       <form class="form" id="registerForm" action="/register" method="POST" enctype="multipart/form-data" novalidate>
         <div class="field">
           <div class="label">Full Name</div>
-          <input class="input" type="text" name="full_name" placeholder="Juan Dela Cruz" required />
-          <div class="help error" id="nameError" style="display:none; color:var(--ember);">Full name is required.</div>
+          <input class="input" type="text" name="full_name" placeholder="Juan Dela Cruz" maxlength="160" required />
+          <div class="help error" id="nameError" style="display:none; color:var(--ember);">
+            Full name is required.
+          </div>
         </div>
 
         <div class="field">
           <div class="label">Email</div>
-          <input class="input" type="email" name="email" placeholder="you@email.com" required />
+          <input class="input" type="email" name="email" placeholder="you@email.com" maxlength="254" required />
           <div class="help">Use a valid email format for future order updates.</div>
-          <div class="help error" id="emailError" style="display:none; color:var(--ember);">Enter a valid email.</div>
+          <div class="help error" id="emailError" style="display:none; color:var(--ember);">
+            Enter a valid email.
+          </div>
         </div>
 
         <div class="field">
           <div class="label">Phone Number</div>
-          <input class="input" type="text" name="phone" placeholder="09XXXXXXXXX" required />
+          <input class="input" type="text" name="phone" placeholder="09XXXXXXXXX" inputmode="numeric" maxlength="11" required />
           <div class="help">Example: 09171234567</div>
-          <div class="help error" id="phoneError" style="display:none; color:var(--ember);">Enter a valid PH mobile (11 digits, starts with 09).</div>
+          <div class="help error" id="phoneError" style="display:none; color:var(--ember);">
+            Enter a valid PH mobile number.
+          </div>
         </div>
 
         <div class="field">
           <div class="label">Password</div>
-          <input class="input" id="password" type="password" name="password" placeholder="••••••••" required />
+          <input class="input" id="password" type="password" name="password" placeholder="••••••••" minlength="8" maxlength="72" required />
           <div class="help">
-            Min 8 chars • Uppercase • Lowercase • Number • Special (!@#$...)
+            Min 8 chars • Uppercase • Lowercase • Number • Special
           </div>
           <div class="help error" id="passwordError" style="display:none; color:var(--ember);">
             Password must be 8+ chars and include uppercase, lowercase, number, and special character.
@@ -78,25 +81,25 @@
 
         <div class="field">
           <div class="label">Retype Password</div>
-          <input class="input" id="confirmPassword" type="password" name="confirm_password" placeholder="••••••••" required />
-          <div class="help error" id="confirmError" style="display:none; color:var(--ember);">Passwords do not match.</div>
+          <input class="input" id="confirmPassword" type="password" name="confirm_password" placeholder="••••••••" minlength="8" maxlength="72" required />
+          <div class="help error" id="confirmError" style="display:none; color:var(--ember);">
+            Passwords do not match.
+          </div>
         </div>
 
         <div class="field">
           <div class="label">Profile Photo</div>
-          <input class="input" type="file" name="photo" accept="image/*" required />
-          <div class="help">PNG/JPG recommended. (We’ll add file-type detection later.)</div>
-          <div class="help error" id="photoError" style="display:none; color:var(--ember);">Profile photo is required.</div>
+          <input class="input" type="file" name="photo" accept=".jpg,.jpeg,.png,.webp" required />
+          <div class="help">JPG, PNG, or WEBP only. Max file size: 2 MB.</div>
+          <div class="help error" id="photoError" style="display:none; color:var(--ember);">
+            Upload a valid image file up to 2 MB.
+          </div>
         </div>
 
-        <!-- ✅ CAPTCHA -->
         <div class="field">
           <div class="label">Human Check</div>
           <div class="help">Please complete the verification.</div>
-
-          <!-- TEST SITE KEY (works on localhost). Replace with your own site key when ready -->
           <div class="g-recaptcha" data-sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"></div>
-
           <div class="help error" id="captchaError" style="display:none; color:var(--ember);">
             Please complete the CAPTCHA.
           </div>
@@ -121,11 +124,35 @@
     const passwordEl = document.getElementById("password");
     const confirmEl = document.getElementById("confirmPassword");
 
-    const show = (id, on) => (document.getElementById(id).style.display = on ? "block" : "none");
+    const show = (id, on) => {
+      document.getElementById(id).style.display = on ? "block" : "none";
+    };
+
+    const isValidEmail = (email) => {
+      const cleanEmail = (email || "").trim();
+
+      if (!cleanEmail || cleanEmail.length > 254) return false;
+
+      const atIndex = cleanEmail.lastIndexOf("@");
+      if (atIndex <= 0 || atIndex !== cleanEmail.indexOf("@")) return false;
+
+      const localPart = cleanEmail.slice(0, atIndex);
+      const domainPart = cleanEmail.slice(atIndex + 1);
+
+      if (!localPart || !domainPart) return false;
+      if (localPart.length > 64) return false;
+      if (domainPart.length > 255) return false;
+
+      const localRegex = /^(?!.*\.\.)[A-Za-z0-9](?:[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{0,62}[A-Za-z0-9])?$/;
+      const domainRegex = /^(?=.{1,255}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])$/;
+
+      return localRegex.test(localPart) && domainRegex.test(domainPart);
+    };
 
     const strongPassword = (pw) => {
       if (!pw) return false;
       if (pw.length < 8) return false;
+      if (pw.length > 72) return false;
       if (!/[A-Z]/.test(pw)) return false;
       if (!/[a-z]/.test(pw)) return false;
       if (!/[0-9]/.test(pw)) return false;
@@ -135,7 +162,6 @@
 
     const validPHPhone = (p) => /^09\d{9}$/.test((p || "").trim());
 
-    // ✅ generic error banner
     const params = new URLSearchParams(window.location.search);
     if (params.get("error") === "1") {
       document.getElementById("genericError").style.display = "block";
@@ -153,18 +179,17 @@
       const cpw = confirmEl.value;
       const photo = form.photo.files && form.photo.files[0];
 
-      // ✅ reCAPTCHA response value injected by Google
       const captchaResponse =
         (document.querySelector('[name="g-recaptcha-response"]') || {}).value || "";
 
       let ok = true;
 
       if (!fullName) { show("nameError", true); ok = false; }
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { show("emailError", true); ok = false; }
+      if (!email || !isValidEmail(email)) { show("emailError", true); ok = false; }
       if (!validPHPhone(phone)) { show("phoneError", true); ok = false; }
       if (!strongPassword(pw)) { show("passwordError", true); ok = false; }
       if (pw !== cpw) { show("confirmError", true); ok = false; }
-      if (!photo) { show("photoError", true); ok = false; }
+      if (!photo || photo.size > 2 * 1024 * 1024) { show("photoError", true); ok = false; }
       if (!captchaResponse) { show("captchaError", true); ok = false; }
 
       if (!ok) e.preventDefault();

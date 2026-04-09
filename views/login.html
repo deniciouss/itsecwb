@@ -169,8 +169,24 @@
     // STRICT EMAIL VALIDATION (UX)
     // ========================================
     function isValidEmail(email) {
-      const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-      return emailRegex.test(email) && email.length <= 254;
+      const cleanEmail = (email || "").trim();
+
+      if (!cleanEmail || cleanEmail.length > 254) return false;
+
+      const atIndex = cleanEmail.lastIndexOf("@");
+      if (atIndex <= 0 || atIndex !== cleanEmail.indexOf("@")) return false;
+
+      const localPart = cleanEmail.slice(0, atIndex);
+      const domainPart = cleanEmail.slice(atIndex + 1);
+
+      if (!localPart || !domainPart) return false;
+      if (localPart.length > 64) return false;
+      if (domainPart.length > 255) return false;
+
+      const localRegex = /^(?!.*\.\.)[A-Za-z0-9](?:[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{0,62}[A-Za-z0-9])?$/;
+      const domainRegex = /^(?=.{1,255}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])$/;
+
+      return localRegex.test(localPart) && domainRegex.test(domainPart);
     }
 
     function getCaptchaToken() {
@@ -191,7 +207,7 @@
 
       const formData = new FormData(this);
       let email = (formData.get('email') || '').trim();
-      let password = (formData.get('password') || '').trim();
+      let password = String(formData.get('password') || '');
 
       if (!email || !isValidEmail(email)) {
         document.getElementById('emailError').style.display = 'block';
