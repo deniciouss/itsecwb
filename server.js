@@ -2288,13 +2288,13 @@ app.get("/api/reservations/:id/orders", requireUserApi, async (req, res) => {
     const reservation = reservationRows[0];
 
     const [orderRows] = await pool.execute(
-      `SELECT id, order_text, quantity, created_at
-       FROM reservation_orders
-       WHERE reservation_id = ?
-         AND user_id = ?
-       ORDER BY created_at DESC, id DESC`,
-      [reservationId, req.session.user.user_id]
-    );
+  `SELECT id, order_text, quantity, created_at
+   FROM reservation_orders
+   WHERE reservation_id = ?
+     AND user_id = ?
+   ORDER BY created_at DESC, id DESC`,
+  [reservationId, req.session.user.user_id]
+);
 
     return res.json({
       reservation,
@@ -2395,6 +2395,144 @@ app.post("/api/reservations/:id/orders", requireUserApi, async (req, res) => {
   }
 });
 
+app.post("/api/orders/:orderId/edit", requireUserApi, async (req, res) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    const menuItemId = Number(req.body.menu_item_id);
+    const quantity = Number(req.body.quantity);
+
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({ error: "Invalid order id" });
+    }
+
+    if (!Number.isInteger(menuItemId) || menuItemId <= 0) {
+      return res.status(400).json({ error: "Please select a menu item" });
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) {
+      return res.status(400).json({ error: "Quantity must be from 1 to 10 only" });
+    }
+
+    const [orderRows] = await pool.execute(
+      `SELECT ro.id, ro.user_id, ro.reservation_id, r.status
+       FROM reservation_orders ro
+       INNER JOIN reservations r ON ro.reservation_id = r.id
+       WHERE ro.id = ?
+         AND ro.user_id = ?
+       LIMIT 1`,
+      [orderId, req.session.user.user_id]
+    );
+
+    if (orderRows.length === 0) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    const existingOrder = orderRows[0];
+
+    if (String(existingOrder.status || "").toLowerCase() === "cancelled") {
+      return res.status(400).json({ error: "Cannot edit order from a cancelled reservation" });
+    }
+
+    const [menuRows] = await pool.execute(
+      `SELECT id, name, is_available
+       FROM menu_items
+       WHERE id = ?
+       LIMIT 1`,
+      [menuItemId]
+    );
+
+    if (menuRows.length === 0) {
+      return res.status(404).json({ error: "Selected menu item not found" });
+    }
+
+    const menuItem = menuRows[0];
+
+    if (Number(menuItem.is_available) !== 1) {
+      return res.status(400).json({ error: "Selected menu item is unavailable" });
+    }
+
+    await pool.execute(
+      `UPDATE reservation_orders
+       SET order_text = ?, quantity = ?
+       WHERE id = ?
+         AND user_id = ?`,
+      [menuItem.name, quantity, orderId, req.session.user.user_id]
+    );
+
+    audit("reservation.order.edit", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      email: req.session.user.email,
+      order_id: orderId,
+      reservation_id: existingOrder.reservation_id,
+      menu_item_id: menuItemId,
+      order_text: menuItem.name,
+      quantity,
+    });
+
+    return res.json({ message: "Order updated successfully" });
+  } catch (err) {
+    audit("reservation.order.edit.error", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      order_id: req.params.orderId,
+      message: err.message,
+    });
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/orders/:orderId/delete", requireUserApi, async (req, res) => {
+  try {
+    const orderId = Number(req.params.orderId);
+
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({ error: "Invalid order id" });
+    }
+
+    const [rows] = await pool.execute(
+      `SELECT id, reservation_id, order_text, quantity
+       FROM reservation_orders
+       WHERE id = ?
+         AND user_id = ?
+       LIMIT 1`,
+      [orderId, req.session.user.user_id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    const order = rows[0];
+
+    await pool.execute(
+      `DELETE FROM reservation_orders
+       WHERE id = ?
+         AND user_id = ?`,
+      [orderId, req.session.user.user_id]
+    );
+
+    audit("reservation.order.delete", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      email: req.session.user.email,
+      order_id: orderId,
+      reservation_id: order.reservation_id,
+      order_text: order.order_text,
+      quantity: order.quantity,
+    });
+
+    return res.json({ message: "Order deleted successfully" });
+  } catch (err) {
+    audit("reservation.order.delete.error", {
+      ip: req.ip,
+      user_id: req.session.user.user_id,
+      order_id: req.params.orderId,
+      message: err.message,
+    });
+    return res.status(500).json({ error: "Server error" });
+  }
+});
 // ========================================
 // GLOBAL ERROR HANDLER
 // ========================================

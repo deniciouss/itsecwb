@@ -16,3 +16,6 @@
 {"ts":"2026-04-09T11:30:47.330Z","event":"reservation.create","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","reservation_id":1,"branch_id":1,"branch_name":"BGC","assigned_tables":"1","reservation_time":"11:00","reservation_end_time":"13:00"}
 {"ts":"2026-04-09T12:24:28.169Z","event":"reservation.order.create","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","reservation_id":1,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":2}
 {"ts":"2026-04-09T12:24:37.232Z","event":"reservation.order.create","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","reservation_id":1,"menu_item_id":5,"order_text":"Bulgogi Beef","quantity":1}
+{"ts":"2026-04-09T12:56:40.572Z","event":"reservation.order.edit","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","order_id":1,"reservation_id":1,"menu_item_id":12,"order_text":"Iced Tea Pitcher","quantity":1}
+{"ts":"2026-04-09T12:56:55.546Z","event":"reservation.order.delete","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","order_id":1,"reservation_id":1,"order_text":"Iced Tea Pitcher","quantity":1}
+{"ts":"2026-04-09T12:58:10.905Z","event":"reservation.order.edit","ip":"::1","user_id":17,"email":"fakehh24@gmail.com","order_id":2,"reservation_id":1,"menu_item_id":5,"order_text":"Bulgogi Beef","quantity":3}
