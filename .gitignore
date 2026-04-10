@@ -8,6 +8,18 @@ node_modules/
 # Uploaded user files
 public/uploads/
 
+# Logs
+logs/
+
+# Local Vercel files
+.vercel/
+
+# Local certificates / keys
+certs/
+*.pem
+*.pfx
+*.key
+
 # OS / editor noise
 .DS_Store
 Thumbs.db
